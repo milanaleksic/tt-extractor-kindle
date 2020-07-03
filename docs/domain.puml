@@ -3,7 +3,7 @@ class book {
 {field} id: varchar(255)
 {field} isbn: varchar(255)
 {field} name: varchar(255)
-{field} book: varchar(255)
+{field} author: varchar(255)
 }
 class annotation {
 {field} id: varchar(255)

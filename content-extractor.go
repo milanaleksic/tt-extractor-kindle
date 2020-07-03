@@ -12,9 +12,11 @@ type ContentExtractor struct {
 
 func NewContentExtractor(db *sql.DB) *ContentExtractor {
 	sqlStmt := `
-	create table foo (
+	create table book (
 		id integer not null primary key, 
-		line text
+		isbn text,
+		name text,
+		authors text
 	);
 	`
 	_, err := db.Exec(sqlStmt)
@@ -42,12 +44,12 @@ func (e ContentExtractor) ingestRow(l string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	stmt, err := tx.Prepare("insert into foo(line) values(?)")
+	stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stmt.Close()
-	_, err = stmt.Exec(l)
+	_, err = stmt.Exec("", l, l)
 	if err != nil {
 		log.Fatal(err)
 	}
