@@ -93,8 +93,7 @@ func skipWhitespace(data []byte, startFrom int) int {
 	for {
 		if iter < len(data) && (data[iter] == '\n' || data[iter] == '\r') {
 			iter++
-			//TODO: compare rune, not per byte
-		} else if iter < len(data)-2 && (data[iter] == 0xEF && data[iter+1] == 0xBB && data[iter+2] == 0xBF) {
+		} else if iter < len(data)-2 && bytes.Equal(data[iter:iter+3], []byte{0xEF, 0xBB, 0xBF}) {
 			iter += 3
 		}
 		break
