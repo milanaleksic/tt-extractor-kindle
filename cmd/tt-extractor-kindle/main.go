@@ -6,8 +6,8 @@ import (
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	extractor "github.com/milanaleksic/tt-extractor-kindle"
+	log "github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"os"
 )
 
@@ -28,10 +28,17 @@ var (
 )
 
 func init() {
+	var debug bool
 	flag.Var(&inputFileLocations, "input-file", "input clipping files")
 	flag.StringVar(&databaseLocation, "database", "clippings.db", "SQLite3 database location")
+	flag.BoolVar(&debug, "debug", false, "show debug messages")
 	flag.Parse()
 
+	if debug {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	if inputFileLocations != nil {
 		for _, inputFileLocation := range inputFileLocations {
 			if _, err := os.Stat(inputFileLocation); os.IsNotExist(err) {
@@ -50,7 +57,7 @@ func main() {
 		for _, f := range openedFiles {
 			err := f.Close()
 			if err != nil {
-				log.Printf("Failed to close file %v, err=%v", f, err)
+				log.Warnf("Failed to close file %v, err=%v", f, err)
 			}
 		}
 	}()

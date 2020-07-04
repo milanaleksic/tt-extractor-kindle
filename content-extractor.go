@@ -3,8 +3,8 @@ package tt_extractor_kindle
 import (
 	"database/sql"
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -46,7 +46,7 @@ func (e ContentExtractor) IngestRecords(reader io.Reader, origin string) {
 	scanner := configureScanner(reader)
 	for scanner.Scan() {
 		l := scanner.Text()
-		log.Println("Encountered line ", l)
+		log.Debugf("Encountered line ", l)
 		e.ingestAnnotation(l, origin)
 	}
 	if err := scanner.Err(); err != nil {
@@ -59,7 +59,7 @@ var bookMetadataRegex = regexp.MustCompile(`\(([^\)]+)\)`)
 func (e ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	rows := strings.Split(annotation, "\n")
 	if len(rows) == 2 {
-		log.Printf("Ignored empty annotation: %v", annotation)
+		log.Debugf("Ignored empty annotation: %v", annotation)
 		return
 	}
 	emptyLine := rows[2]
