@@ -117,7 +117,7 @@ type Location struct {
 	LocationEnd   *int `json:"locationEnd,omitempty"`
 }
 
-var annotationMetadataRegex = regexp.MustCompile(`- (?:Your )?(Note|Highlight) (?:(?:Loc.|on Page) (\d+)(?: |-(\d+) )\| )?(?:Location (\d+)(?:-(\d+))? \| )?Added on (.*)`)
+var annotationMetadataRegex = regexp.MustCompile(`- (?:Your )?(Note|Highlight) (?:(?:Loc.|on Page|on page) (\d+)(?: |-(\d+) )\| )?(?:(?:Location|(?:at )?location) (\d+)(?:-(\d+))? \| )?Added on (.*)`)
 
 var layouts = []string{
 	"Monday, January 2, 2006 3:04:05 PM",
@@ -130,7 +130,7 @@ func (e ContentExtractor) processAnnotation(bookMetadata string, annotationMetad
 
 	annotationMetadataParsed := annotationMetadataRegex.FindAllStringSubmatch(annotationMetadata, -1)
 	if len(annotationMetadataParsed) == 0 {
-		log.Fatalf("Failed to match annotation annotationMetadata in: %v", annotationMetadata)
+		log.Fatalf("Failed to match annotation regex in: %v", annotationMetadata)
 	}
 	matched := annotationMetadataParsed[0]
 	field := 1
