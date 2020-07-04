@@ -29,7 +29,8 @@ func NewContentExtractor(db *sql.DB) *ContentExtractor {
 		book_id integer, 
 		text text,
 		location text,
-		ts timestamp
+		ts timestamp,
+		origin text
 	);
 	`
 	_, err := db.Exec(sqlStmt)
@@ -41,12 +42,12 @@ func NewContentExtractor(db *sql.DB) *ContentExtractor {
 	}
 }
 
-func (e ContentExtractor) IngestRecords(reader io.Reader) {
+func (e ContentExtractor) IngestRecords(reader io.Reader, origin string) {
 	scanner := configureScanner(reader)
 	for scanner.Scan() {
 		l := scanner.Text()
 		log.Println("Encountered line ", l)
-		e.ingestAnnotation(l)
+		e.ingestAnnotation(l, origin)
 	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
@@ -55,7 +56,7 @@ func (e ContentExtractor) IngestRecords(reader io.Reader) {
 
 var bookMetadataRegex = regexp.MustCompile(`\(([^\)]+)\)`)
 
-func (e ContentExtractor) ingestAnnotation(annotation string) {
+func (e ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	rows := strings.Split(annotation, "\n")
 	if len(rows) == 2 {
 		log.Printf("Ignored empty annotation: %v", annotation)
@@ -71,18 +72,18 @@ func (e ContentExtractor) ingestAnnotation(annotation string) {
 	annotationMetadata := rows[1]
 	annotationData := rows[3:]
 
-	e.processAnnotation(bookMetadata, annotationMetadata, annotationData)
+	e.processAnnotation(bookMetadata, annotationMetadata, annotationData, origin)
 }
 
-func (e ContentExtractor) getBookId(book_metadata string) (bookId int64) {
-	parenthesesBlocks := bookMetadataRegex.FindAllStringSubmatch(book_metadata, -1)
-	// there might be multiple blocks in parentheses, we want the last one only
-	if len(parenthesesBlocks) == 0 {
-		log.Fatalf("Expected at least one parenthesesBlocks in line '%v'", book_metadata)
+func (e ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
+	parenthesesBlocks := bookMetadataRegex.FindAllStringSubmatch(bookMetadata, -1)
+	author := ""
+	bookName := bookMetadata
+	// if we can match one parenthesis block, probably it is the author name
+	if len(parenthesesBlocks) != 0 {
+		author = parenthesesBlocks[len(parenthesesBlocks)-1][1]
+		bookName = bookMetadata[0 : strings.LastIndex(bookMetadata, "(")-1]
 	}
-	author := parenthesesBlocks[len(parenthesesBlocks)-1][1]
-	bookName := book_metadata[0 : strings.LastIndex(book_metadata, "(")-1]
-
 	return e.upsertBook(bookName, author)
 }
 
@@ -116,12 +117,15 @@ type Location struct {
 	LocationEnd   *int `json:"locationEnd,omitempty"`
 }
 
-var annotationMetadataRegex = regexp.MustCompile(`- (?:Your )?Highlight (?:(?:Loc.|on Page) (\d+)(?: |-(\d+) )\| )?(?:Location (\d+)(?: |-(\d+)) \| )?Added on ((?:[a-zA-Z]+), [a-zA-Z]+ \d+, \d+ \d+:\d+(?::\d+)? (?:AM|PM))`)
+var annotationMetadataRegex = regexp.MustCompile(`- (?:Your )?(Note|Highlight) (?:(?:Loc.|on Page) (\d+)(?: |-(\d+) )\| )?(?:Location (\d+)(?:-(\d+))? \| )?Added on (.*)`)
 
-const layoutWithSeconds = "Monday, January 2, 2006 3:04:05 PM"
-const layoutWithoutSeconds = "Monday, January 2, 2006 3:04 PM"
+var layouts = []string{
+	"Monday, January 2, 2006 3:04:05 PM",
+	"Monday, January 2, 2006 3:04 PM",
+	"Monday, 2 January 06 15:04:05",
+}
 
-func (e ContentExtractor) processAnnotation(bookMetadata string, annotationMetadata string, annotationData []string) {
+func (e ContentExtractor) processAnnotation(bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
 	bookId := e.getBookId(bookMetadata)
 
 	annotationMetadataParsed := annotationMetadataRegex.FindAllStringSubmatch(annotationMetadata, -1)
@@ -129,17 +133,33 @@ func (e ContentExtractor) processAnnotation(bookMetadata string, annotationMetad
 		log.Fatalf("Failed to match annotation annotationMetadata in: %v", annotationMetadata)
 	}
 	matched := annotationMetadataParsed[0]
-	location := Location{
-		PageStart:     MustItoa(matched[1]),
-		PageEnd:       MustItoa(matched[2]),
-		LocationStart: MustItoa(matched[3]),
-		LocationEnd:   MustItoa(matched[4]),
+	field := 1
+	var type_ annotationType
+	switch matched[field] {
+	case "Highlight":
+		type_ = Highlight
+	case "Note":
+		type_ = Note
+	default:
+		log.Fatalf("Not supported type: %v", matched[field])
 	}
-	timeMatch := matched[5]
-	parse, err := time.Parse(layoutWithSeconds, timeMatch)
-	if err != nil {
-		parse, err = time.Parse(layoutWithoutSeconds, timeMatch)
-		check(err)
+	field++
+	location := Location{
+		PageStart:     MustItoa(matched[field]),
+		PageEnd:       MustItoa(matched[field+1]),
+		LocationStart: MustItoa(matched[field+2]),
+		LocationEnd:   MustItoa(matched[field+3]),
+	}
+	field += 4
+	timeMatch := matched[field]
+	field++
+	var parsedTime time.Time
+	var err error
+	for _, layout := range layouts {
+		parsedTime, err = time.Parse(layout, timeMatch)
+		if err == nil {
+			break
+		}
 	}
 	locationAsString, err := json.Marshal(location)
 	check(err)
@@ -148,10 +168,19 @@ func (e ContentExtractor) processAnnotation(bookMetadata string, annotationMetad
 		bookId:   bookId,
 		text:     strings.Join(annotationData, "\n"),
 		location: string(locationAsString),
-		ts:       parse,
+		ts:       parsedTime,
+		origin:   origin,
+		type_:    type_,
 	}
 	e.upsertAnnotation(&annotation)
 }
+
+type annotationType string
+
+const (
+	Note      annotationType = "note"
+	Highlight annotationType = "highlight"
+)
 
 type Annotation struct {
 	id       int64
@@ -159,26 +188,28 @@ type Annotation struct {
 	text     string
 	location string
 	ts       time.Time
+	origin   string
+	type_    annotationType
 }
 
-func (e ContentExtractor) upsertAnnotation(annotation *Annotation) {
+func (e ContentExtractor) upsertAnnotation(a *Annotation) {
 	tx, err := e.db.Begin()
 	check(err)
-	if e.findExisting(annotation) {
-		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=? where id=?")
+	if e.findExisting(a) {
+		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=? where id=?")
 		check(err)
 		defer stmt.Close()
-		_, err = stmt.Exec(annotation.location, annotation.text, annotation.ts, annotation.id)
+		_, err = stmt.Exec(a.location, a.text, a.ts, a.origin, a.id)
 		check(err)
 	} else {
-		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts) values(?,?,?,?)")
+		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin) values(?,?,?,?,?)")
 		check(err)
 		defer stmt.Close()
-		insertResult, err := stmt.Exec(annotation.bookId, annotation.location, annotation.text, annotation.ts)
+		insertResult, err := stmt.Exec(a.bookId, a.location, a.text, a.ts, a.origin)
 		check(err)
 		annotationId, err := insertResult.LastInsertId()
 		check(err)
-		annotation.id = annotationId
+		a.id = annotationId
 	}
 	tx.Commit()
 	return

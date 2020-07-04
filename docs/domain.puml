@@ -11,6 +11,8 @@ class annotation {
 {field} text: text
 {field} location: text
 {field} ts: timestamp
+{field} origin: text
+{field} type: text
 }
 book "1" -- "0..*" annotation
 @enduml

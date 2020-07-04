@@ -11,45 +11,70 @@ import (
 	"os"
 )
 
+type inputFiles []string
+
+func (i *inputFiles) String() string {
+	return fmt.Sprintf("%v", *i)
+}
+
+func (i *inputFiles) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
 var (
-	inputFile        *os.File
-	databaseLocation string
+	inputFileLocations inputFiles
+	databaseLocation   string
 )
 
 func init() {
-	var inputFileLocation string
-	flag.StringVar(&inputFileLocation, "input-file", "My Clippings.txt", "input file with clippings")
+	flag.Var(&inputFileLocations, "input-file", "input clipping files")
 	flag.StringVar(&databaseLocation, "database", "clippings.db", "SQLite3 database location")
 	flag.Parse()
 
-	if inputFileLocation != "" {
-		var err error
-		inputFile, err = os.Open(inputFileLocation)
-		if err != nil {
-			log.Fatalf("Failed to open input file: %s, reason: %v", inputFileLocation, err)
+	if inputFileLocations != nil {
+		for _, inputFileLocation := range inputFileLocations {
+			if _, err := os.Stat(inputFileLocation); os.IsNotExist(err) {
+				log.Fatalf("Input file does not exist: %s", inputFileLocation)
+			}
 		}
 	}
 }
 
 func main() {
-	var reader io.ReadCloser
-	if inputFile != nil {
-		reader = inputFile
+	db := prepareDatabase()
+	defer db.Close()
+
+	var openedFiles []io.Closer
+	defer func() {
+		for _, f := range openedFiles {
+			err := f.Close()
+			if err != nil {
+				log.Printf("Failed to close file %v, err=%v", f, err)
+			}
+		}
+	}()
+	contentExtractor := extractor.NewContentExtractor(db)
+	if len(inputFileLocations) > 0 {
+		for _, inputFileLocation := range inputFileLocations {
+			f, err := os.Open(inputFileLocation)
+			if err != nil {
+				log.Fatalf("Failed to open input file: %s, reason: %v", inputFileLocation, err)
+			}
+			openedFiles = append(openedFiles, f)
+			contentExtractor.IngestRecords(f, f.Name())
+		}
 	} else {
 		_, _ = fmt.Fprintln(os.Stderr, "Reading from stdin")
-		reader = os.Stdin
+		contentExtractor.IngestRecords(os.Stdin, "stdin")
 	}
-	defer reader.Close()
+}
 
+func prepareDatabase() *sql.DB {
 	_ = os.Remove(databaseLocation)
 	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?cache=shared", databaseLocation))
 	if err != nil {
 		log.Fatalf("Failed to open database file: %s, reason: %v", databaseLocation, err)
 	}
-	// https://github.com/mattn/go-sqlite3/issues/209
-	//db.SetMaxOpenConns(1)
-	extractor.
-		NewContentExtractor(db).
-		IngestRecords(reader)
-	defer db.Close()
+	return db
 }
