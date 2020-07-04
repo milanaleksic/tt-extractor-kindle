@@ -5,7 +5,7 @@ Extracts contents from Kindle Clippings into ThoughtTrain Common Table Format.
 ## Installation
 
 ```
-go get -u github.com/milanaleksic/tt_extractor_kindle/cmd/tt-extractor-kindle
+go get -u github.com/milanaleksic/tt-extractor-kindle/cmd/tt-extractor-kindle
 ```
 
 ## Usage
