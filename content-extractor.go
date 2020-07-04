@@ -151,7 +151,7 @@ func (e ContentExtractor) processAnnotation(bookMetadata string, annotationMetad
 		LocationEnd:   MustItoa(matched[field+3]),
 	}
 	field += 4
-	timeMatch := matched[field]
+	timeMatch := strings.TrimSpace(matched[field])
 	field++
 	var parsedTime time.Time
 	var err error
