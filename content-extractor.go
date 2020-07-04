@@ -30,7 +30,8 @@ func NewContentExtractor(db *sql.DB) *ContentExtractor {
 		text text,
 		location text,
 		ts timestamp,
-		origin text
+		origin text,
+		type text
 	);
 	`
 	_, err := db.Exec(sqlStmt)
@@ -196,16 +197,16 @@ func (e ContentExtractor) upsertAnnotation(a *Annotation) {
 	tx, err := e.db.Begin()
 	check(err)
 	if e.findExisting(a) {
-		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=? where id=?")
+		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=?, type=? where id=?")
 		check(err)
 		defer stmt.Close()
-		_, err = stmt.Exec(a.location, a.text, a.ts, a.origin, a.id)
+		_, err = stmt.Exec(a.location, a.text, a.ts, a.origin, a.type_, a.id)
 		check(err)
 	} else {
-		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin) values(?,?,?,?,?)")
+		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin, type) values(?,?,?,?,?,?)")
 		check(err)
 		defer stmt.Close()
-		insertResult, err := stmt.Exec(a.bookId, a.location, a.text, a.ts, a.origin)
+		insertResult, err := stmt.Exec(a.bookId, a.location, a.text, a.ts, a.origin, a.type_)
 		check(err)
 		annotationId, err := insertResult.LastInsertId()
 		check(err)
