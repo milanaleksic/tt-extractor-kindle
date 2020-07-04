@@ -12,7 +12,9 @@ import (
 )
 
 type ContentExtractor struct {
-	db *sql.DB
+	db                  *sql.DB
+	annotationsUpdated  int
+	annotationsInserted int
 }
 
 func NewContentExtractor(db *sql.DB) *ContentExtractor {
@@ -43,7 +45,8 @@ func NewContentExtractor(db *sql.DB) *ContentExtractor {
 	}
 }
 
-func (e ContentExtractor) IngestRecords(reader io.Reader, origin string) {
+func (e *ContentExtractor) IngestRecords(reader io.Reader, origin string) {
+	begin := time.Now()
 	scanner := configureScanner(reader)
 	for scanner.Scan() {
 		l := scanner.Text()
@@ -53,11 +56,13 @@ func (e ContentExtractor) IngestRecords(reader io.Reader, origin string) {
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+	log.Infof("Ingestion completed from origin %v in %dms; updated %v annotations and created %v new ones",
+		origin, time.Now().Sub(begin).Milliseconds(), e.annotationsUpdated, e.annotationsInserted)
 }
 
 var bookMetadataRegex = regexp.MustCompile(`\(([^\)]+)\)`)
 
-func (e ContentExtractor) ingestAnnotation(annotation string, origin string) {
+func (e *ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	rows := strings.Split(annotation, "\n")
 	if len(rows) == 2 {
 		log.Debugf("Ignored empty annotation: %v", annotation)
@@ -76,7 +81,7 @@ func (e ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	e.processAnnotation(bookMetadata, annotationMetadata, annotationData, origin)
 }
 
-func (e ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
+func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
 	parenthesesBlocks := bookMetadataRegex.FindAllStringSubmatch(bookMetadata, -1)
 	author := ""
 	bookName := bookMetadata
@@ -88,7 +93,7 @@ func (e ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
 	return e.upsertBook(bookName, author)
 }
 
-func (e ContentExtractor) upsertBook(bookName, authors string) (bookId int64) {
+func (e *ContentExtractor) upsertBook(bookName, authors string) (bookId int64) {
 	rows, err := e.db.Query("select id from book where name=? and authors=?", bookName, authors)
 	check(err)
 	defer rows.Close()
@@ -126,7 +131,7 @@ var layouts = []string{
 	"Monday, 2 January 06 15:04:05",
 }
 
-func (e ContentExtractor) processAnnotation(bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
+func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
 	bookId := e.getBookId(bookMetadata)
 
 	annotationMetadataParsed := annotationMetadataRegex.FindAllStringSubmatch(annotationMetadata, -1)
@@ -193,7 +198,7 @@ type Annotation struct {
 	type_    annotationType
 }
 
-func (e ContentExtractor) upsertAnnotation(a *Annotation) {
+func (e *ContentExtractor) upsertAnnotation(a *Annotation) {
 	tx, err := e.db.Begin()
 	check(err)
 	if e.findExisting(a) {
@@ -203,6 +208,7 @@ func (e ContentExtractor) upsertAnnotation(a *Annotation) {
 		_, err = stmt.Exec(a.location, a.text, a.ts, a.origin, a.type_, a.id)
 		check(err)
 		log.Debugf("Updated existing annotation with id %v", a.id)
+		e.annotationsUpdated++
 	} else {
 		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin, type) values(?,?,?,?,?,?)")
 		check(err)
@@ -213,12 +219,13 @@ func (e ContentExtractor) upsertAnnotation(a *Annotation) {
 		check(err)
 		a.id = annotationId
 		log.Debugf("Inserted new annotation with id %v", a.id)
+		e.annotationsInserted++
 	}
 	tx.Commit()
 	return
 }
 
-func (e ContentExtractor) findExisting(annotation *Annotation) bool {
+func (e *ContentExtractor) findExisting(annotation *Annotation) bool {
 	rows, err := e.db.Query("select id from annotation where book_id=? and text=?", annotation.bookId, annotation.text)
 	check(err)
 	defer rows.Close()
