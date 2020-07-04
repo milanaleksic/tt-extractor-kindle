@@ -73,22 +73,35 @@ func (e ContentExtractor) ingestAnnotation(annotation string) {
 		log.Fatalf("Failed to match annotation metadata in: %v", annotation)
 	}
 
-	e.storeOrMatchInDb(author, bookName)
+	bookId := e.upsertBook(bookName, author)
+	log.Printf("Book %v", bookId)
 }
 
-func (e ContentExtractor) storeOrMatchInDb(author, bookName string) {
-	tx, err := e.db.Begin()
+func (e ContentExtractor) upsertBook(bookName, authors string) (bookId int64) {
+	rows, err := e.db.Query("select id from book where name=? and authors=?", bookName, authors)
+	check(err)
+	defer rows.Close()
+	if rows.Next() {
+		err = rows.Scan(&bookId)
+		check(err)
+		err = rows.Err()
+		check(err)
+	} else {
+		tx, err := e.db.Begin()
+		check(err)
+		stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
+		check(err)
+		defer stmt.Close()
+		insertResult, err := stmt.Exec("", bookName, authors)
+		check(err)
+		tx.Commit()
+		bookId, err = insertResult.LastInsertId()
+	}
+	return
+}
+
+func check(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmt.Close()
-	_, err = stmt.Exec("", bookName, author)
-	if err != nil {
-		log.Fatal(err)
-	}
-	tx.Commit()
 }
