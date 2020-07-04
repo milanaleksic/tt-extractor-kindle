@@ -1,16 +1,16 @@
 @startuml
 class book {
-{field} id: varchar(255)
-{field} isbn: varchar(255)
-{field} name: varchar(255)
-{field} author: varchar(255)
+{field} id: integer
+{field} isbn: text
+{field} name: text
+{field} author: text
 }
 class annotation {
-{field} id: varchar(255)
-{field} book_id: varchar(255)
-{field} text: varchar(255)
-{field} location: varchar(255)
-{field} time: timestamp
+{field} id: integer
+{field} book_id: integer
+{field} text: text
+{field} location: text
+{field} ts: timestamp
 }
 book "1" -- "0..*" annotation
 @enduml
