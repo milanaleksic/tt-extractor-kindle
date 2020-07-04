@@ -78,7 +78,6 @@ func main() {
 }
 
 func prepareDatabase() *sql.DB {
-	_ = os.Remove(databaseLocation)
 	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?cache=shared", databaseLocation))
 	if err != nil {
 		log.Fatalf("Failed to open database file: %s, reason: %v", databaseLocation, err)

@@ -18,13 +18,13 @@ type ContentExtractor struct {
 func NewContentExtractor(db *sql.DB) *ContentExtractor {
 	//TODO: can location have type json?
 	sqlStmt := `
-	create table book (
+	create table if not exists book (
 		id integer not null primary key, 
 		isbn text,
 		name text,
 		authors text
 	);
-	create table annotation (
+	create table if not exists annotation (
 		id integer not null primary key,
 		book_id integer, 
 		text text,
@@ -202,6 +202,7 @@ func (e ContentExtractor) upsertAnnotation(a *Annotation) {
 		defer stmt.Close()
 		_, err = stmt.Exec(a.location, a.text, a.ts, a.origin, a.type_, a.id)
 		check(err)
+		log.Debugf("Updated existing annotation with id %v", a.id)
 	} else {
 		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin, type) values(?,?,?,?,?,?)")
 		check(err)
@@ -211,6 +212,7 @@ func (e ContentExtractor) upsertAnnotation(a *Annotation) {
 		annotationId, err := insertResult.LastInsertId()
 		check(err)
 		a.id = annotationId
+		log.Debugf("Inserted new annotation with id %v", a.id)
 	}
 	tx.Commit()
 	return
