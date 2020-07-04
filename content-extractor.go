@@ -162,14 +162,9 @@ type Annotation struct {
 }
 
 func (e ContentExtractor) upsertAnnotation(annotation *Annotation) {
-	rows, err := e.db.Query("select id from annotation where book_id=? and text=?", annotation.bookId, annotation.text)
-	check(err)
-	defer rows.Close()
 	tx, err := e.db.Begin()
 	check(err)
-	if rows.Next() {
-		err := rows.Scan(&annotation.id)
-		check(err)
+	if e.findExisting(annotation) {
 		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=? where id=?")
 		check(err)
 		defer stmt.Close()
@@ -187,6 +182,18 @@ func (e ContentExtractor) upsertAnnotation(annotation *Annotation) {
 	}
 	tx.Commit()
 	return
+}
+
+func (e ContentExtractor) findExisting(annotation *Annotation) bool {
+	rows, err := e.db.Query("select id from annotation where book_id=? and text=?", annotation.bookId, annotation.text)
+	check(err)
+	defer rows.Close()
+	if rows.Next() {
+		err := rows.Scan(&annotation.id)
+		check(err)
+		return true
+	}
+	return false
 }
 
 func MustItoa(s string) *int {

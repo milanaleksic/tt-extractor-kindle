@@ -46,6 +46,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open database file: %s, reason: %v", databaseLocation, err)
 	}
+	// https://github.com/mattn/go-sqlite3/issues/209
+	//db.SetMaxOpenConns(1)
 	extractor.
 		NewContentExtractor(db).
 		IngestRecords(reader)
