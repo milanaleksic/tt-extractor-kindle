@@ -1,8 +1,8 @@
 package tt_extractor_kindle
 
 import (
-	"bufio"
 	"database/sql"
+	"io"
 	"log"
 )
 
@@ -28,18 +28,19 @@ func NewContentExtractor(db *sql.DB) *ContentExtractor {
 	}
 }
 
-func (e ContentExtractor) IngestRecords(scanner *bufio.Scanner) {
+func (e ContentExtractor) IngestRecords(reader io.Reader) {
+	scanner := configureScanner(reader)
 	for scanner.Scan() {
 		l := scanner.Text()
 		log.Println("Encountered line ", l)
-		e.ingestRow(l)
+		e.ingestAnnotation(l)
 	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func (e ContentExtractor) ingestRow(l string) {
+func (e ContentExtractor) ingestAnnotation(l string) {
 	tx, err := e.db.Begin()
 	if err != nil {
 		log.Fatal(err)

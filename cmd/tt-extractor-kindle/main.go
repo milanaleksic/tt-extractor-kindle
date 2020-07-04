@@ -1,13 +1,12 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"database/sql"
 	"flag"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	extractor "github.com/milanaleksic/tt-extractor-kindle"
+	"io"
 	"log"
 	"os"
 )
@@ -33,14 +32,14 @@ func init() {
 }
 
 func main() {
-	var scanner *bufio.Scanner
+	var reader io.ReadCloser
 	if inputFile != nil {
-		scanner = bufio.NewScanner(inputFile)
+		reader = inputFile
 	} else {
-		scanner = bufio.NewScanner(os.Stdin)
 		_, _ = fmt.Fprintln(os.Stderr, "Reading from stdin")
+		reader = os.Stdin
 	}
-	configureScanner(scanner)
+	defer reader.Close()
 
 	_ = os.Remove(databaseLocation)
 	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?cache=shared", databaseLocation))
@@ -49,54 +48,6 @@ func main() {
 	}
 	extractor.
 		NewContentExtractor(db).
-		IngestRecords(scanner)
+		IngestRecords(reader)
 	defer db.Close()
-}
-
-func configureScanner(scanner *bufio.Scanner) {
-	const MAX_BLOCK_SIZE = 1024 * 1024
-	const BUFF_SIZE = 64 * 1024
-	const KINDLE_SPLITTER = "=========="
-
-	buf := make([]byte, 0, BUFF_SIZE)
-	scanner.Buffer(buf, MAX_BLOCK_SIZE)
-
-	separator := []byte(KINDLE_SPLITTER)
-	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF && len(data) == 0 {
-			return 0, nil, nil
-		}
-		if i := bytes.Index(data, separator); i >= 0 {
-			nbs := skipWhitespace(data, i+1+len(separator)) // next block start
-			cbs := skipWhitespace(data, 0)                  // current block start
-			cbe := beforeWhitespace(data, i)                // current block ending + 1
-			return nbs, data[cbs:cbe], nil
-		}
-		if atEOF {
-			return len(data), data, nil
-		}
-		// Request more data.
-		return 0, nil, nil
-	})
-}
-
-func beforeWhitespace(data []byte, startFrom int) int {
-	iter := startFrom
-	for iter > 0 && (data[iter-1] == '\n' || data[iter-1] == '\r') {
-		iter--
-	}
-	return iter
-}
-
-func skipWhitespace(data []byte, startFrom int) int {
-	iter := startFrom
-	for {
-		if iter < len(data) && (data[iter] == '\n' || data[iter] == '\r') {
-			iter++
-		} else if iter < len(data)-2 && bytes.Equal(data[iter:iter+3], []byte{0xEF, 0xBB, 0xBF}) {
-			iter += 3
-		}
-		break
-	}
-	return iter
 }
