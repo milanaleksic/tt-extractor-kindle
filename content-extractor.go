@@ -1,47 +1,25 @@
 package tt_extractor_kindle
 
 import (
-	"database/sql"
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
 
 type ContentExtractor struct {
-	db                  *sql.DB
+	bookRepo            BookRepository
+	annotationRepo      AnnotationRepository
 	annotationsUpdated  int
 	annotationsInserted int
 }
 
-func NewContentExtractor(db *sql.DB) *ContentExtractor {
-	//TODO: can location have type json?
-	sqlStmt := `
-	create table if not exists book (
-		id integer not null primary key, 
-		isbn text,
-		name text,
-		authors text
-	);
-	create table if not exists annotation (
-		id integer not null primary key,
-		book_id integer, 
-		text text,
-		location text,
-		ts timestamp,
-		origin text,
-		type text
-	);
-	`
-	_, err := db.Exec(sqlStmt)
-	if err != nil {
-		log.Fatalf("%q: %s\n", err, sqlStmt)
-	}
+func NewContentExtractor(bookRepo BookRepository, annotationRepo AnnotationRepository) *ContentExtractor {
 	return &ContentExtractor{
-		db: db,
+		bookRepo:       bookRepo,
+		annotationRepo: annotationRepo,
 	}
 }
 
@@ -81,48 +59,6 @@ func (e *ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	e.processAnnotation(bookMetadata, annotationMetadata, annotationData, origin)
 }
 
-func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
-	parenthesesBlocks := bookMetadataRegex.FindAllStringSubmatch(bookMetadata, -1)
-	author := ""
-	bookName := bookMetadata
-	// if we can match one parenthesis block, probably it is the author name
-	if len(parenthesesBlocks) != 0 {
-		author = parenthesesBlocks[len(parenthesesBlocks)-1][1]
-		bookName = bookMetadata[0 : strings.LastIndex(bookMetadata, "(")-1]
-	}
-	return e.upsertBook(bookName, author)
-}
-
-func (e *ContentExtractor) upsertBook(bookName, authors string) (bookId int64) {
-	rows, err := e.db.Query("select id from book where name=? and authors=?", bookName, authors)
-	check(err)
-	defer rows.Close()
-	if rows.Next() {
-		err = rows.Scan(&bookId)
-		check(err)
-		err = rows.Err()
-		check(err)
-	} else {
-		tx, err := e.db.Begin()
-		check(err)
-		stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
-		check(err)
-		defer stmt.Close()
-		insertResult, err := stmt.Exec("", bookName, authors)
-		check(err)
-		tx.Commit()
-		bookId, err = insertResult.LastInsertId()
-	}
-	return
-}
-
-type Location struct {
-	PageStart     *int `json:"pageStart,omitempty"`
-	PageEnd       *int `json:"pageEnd,omitempty"`
-	LocationStart *int `json:"locationStart,omitempty"`
-	LocationEnd   *int `json:"locationEnd,omitempty"`
-}
-
 var annotationMetadataRegex = regexp.MustCompile(`- (?:Your )?(Note|Highlight) (?:(?:Loc.|on Page|on page) (\d+)(?: |-(\d+) )\| )?(?:(?:Location|(?:at )?location) (\d+)(?:-(\d+))? \| )?Added on (.*)`)
 
 var layouts = []string{
@@ -133,7 +69,6 @@ var layouts = []string{
 
 func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
 	bookId := e.getBookId(bookMetadata)
-
 	annotationMetadataParsed := annotationMetadataRegex.FindAllStringSubmatch(annotationMetadata, -1)
 	if len(annotationMetadataParsed) == 0 {
 		log.Fatalf("Failed to match annotation regex in: %v", annotationMetadata)
@@ -178,76 +113,21 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 		origin:   origin,
 		type_:    type_,
 	}
-	e.upsertAnnotation(&annotation)
-}
-
-type annotationType string
-
-const (
-	Note      annotationType = "note"
-	Highlight annotationType = "highlight"
-)
-
-type Annotation struct {
-	id       int64
-	bookId   int64
-	text     string
-	location string
-	ts       time.Time
-	origin   string
-	type_    annotationType
-}
-
-func (e *ContentExtractor) upsertAnnotation(a *Annotation) {
-	tx, err := e.db.Begin()
-	check(err)
-	if e.findExisting(a) {
-		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=?, type=? where id=?")
-		check(err)
-		defer stmt.Close()
-		_, err = stmt.Exec(a.location, a.text, a.ts, a.origin, a.type_, a.id)
-		check(err)
-		log.Debugf("Updated existing annotation with id %v", a.id)
+	if e.annotationRepo.upsertAnnotation(&annotation) {
 		e.annotationsUpdated++
 	} else {
-		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin, type) values(?,?,?,?,?,?)")
-		check(err)
-		defer stmt.Close()
-		insertResult, err := stmt.Exec(a.bookId, a.location, a.text, a.ts, a.origin, a.type_)
-		check(err)
-		annotationId, err := insertResult.LastInsertId()
-		check(err)
-		a.id = annotationId
-		log.Debugf("Inserted new annotation with id %v", a.id)
 		e.annotationsInserted++
 	}
-	tx.Commit()
-	return
 }
 
-func (e *ContentExtractor) findExisting(annotation *Annotation) bool {
-	rows, err := e.db.Query("select id from annotation where book_id=? and text=?", annotation.bookId, annotation.text)
-	check(err)
-	defer rows.Close()
-	if rows.Next() {
-		err := rows.Scan(&annotation.id)
-		check(err)
-		return true
+func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
+	parenthesesBlocks := bookMetadataRegex.FindAllStringSubmatch(bookMetadata, -1)
+	author := ""
+	bookName := bookMetadata
+	// if we can match one parenthesis block, probably it is the author name
+	if len(parenthesesBlocks) != 0 {
+		author = parenthesesBlocks[len(parenthesesBlocks)-1][1]
+		bookName = bookMetadata[0 : strings.LastIndex(bookMetadata, "(")-1]
 	}
-	return false
-}
-
-func MustItoa(s string) *int {
-	if s == "" {
-		return nil
-	}
-	result, err := strconv.Atoi(s)
-	check(err)
-	return &result
-}
-
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+	return e.bookRepo.upsertBook(bookName, author)
 }

@@ -61,7 +61,10 @@ func main() {
 			}
 		}
 	}()
-	contentExtractor := extractor.NewContentExtractor(db)
+	contentExtractor := extractor.NewContentExtractor(
+		extractor.NewBookRepository(db),
+		extractor.NewAnnotationRepository(db),
+	)
 	if len(inputFileLocations) > 0 {
 		for _, inputFileLocation := range inputFileLocations {
 			f, err := os.Open(inputFileLocation)
