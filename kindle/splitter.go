@@ -1,4 +1,4 @@
-package tt_extractor_kindle
+package kindle
 
 import (
 	"bufio"

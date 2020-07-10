@@ -1,12 +1,13 @@
-package tt_extractor_kindle
+package model
 
 import (
 	"database/sql"
+	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
 )
 
 type BookRepository interface {
-	upsertBook(bookName, authors string) (bookId int64)
+	UpsertBook(bookName, authors string) (bookId int64)
 }
 type bookRepository struct {
 	db *sql.DB
@@ -15,7 +16,7 @@ type bookRepository struct {
 func NewBookRepository(db *sql.DB) BookRepository {
 	sqlStmt := `
 	create table if not exists book (
-		id integer not null primary key, 
+		Id integer not null primary key, 
 		isbn text,
 		name text,
 		authors text
@@ -30,23 +31,23 @@ func NewBookRepository(db *sql.DB) BookRepository {
 	}
 }
 
-func (r *bookRepository) upsertBook(bookName, authors string) (bookId int64) {
-	rows, err := r.db.Query("select id from book where name=? and authors=?", bookName, authors)
-	check(err)
+func (r *bookRepository) UpsertBook(bookName, authors string) (bookId int64) {
+	rows, err := r.db.Query("select Id from book where name=? and authors=?", bookName, authors)
+	utils.Check(err)
 	defer rows.Close()
 	if rows.Next() {
 		err = rows.Scan(&bookId)
-		check(err)
+		utils.Check(err)
 		err = rows.Err()
-		check(err)
+		utils.Check(err)
 	} else {
 		tx, err := r.db.Begin()
-		check(err)
+		utils.Check(err)
 		stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
-		check(err)
+		utils.Check(err)
 		defer stmt.Close()
 		insertResult, err := stmt.Exec("", bookName, authors)
-		check(err)
+		utils.Check(err)
 		tx.Commit()
 		bookId, err = insertResult.LastInsertId()
 	}

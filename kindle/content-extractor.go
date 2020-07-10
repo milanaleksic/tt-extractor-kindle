@@ -1,7 +1,9 @@
-package tt_extractor_kindle
+package kindle
 
 import (
 	"encoding/json"
+	"github.com/milanaleksic/tt-extractor-kindle/model"
+	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"regexp"
@@ -9,14 +11,24 @@ import (
 	"time"
 )
 
+var (
+	bookMetadataRegex       = regexp.MustCompile(`\(([^\)]+)\)`)
+	annotationMetadataRegex = regexp.MustCompile(`- (?:Your )?(Note|Highlight) (?:(?:Loc.|on Page|on page) (\d+)(?: |-(\d+) )\| )?(?:(?:Location|(?:at )?location) (\d+)(?:-(\d+))? \| )?Added on (.*)`)
+	layouts                 = []string{
+		"Monday, January 2, 2006 3:04:05 PM",
+		"Monday, January 2, 2006 3:04 PM",
+		"Monday, 2 January 06 15:04:05",
+	}
+)
+
 type ContentExtractor struct {
-	bookRepo            BookRepository
-	annotationRepo      AnnotationRepository
+	bookRepo            model.BookRepository
+	annotationRepo      model.AnnotationRepository
 	annotationsUpdated  int
 	annotationsInserted int
 }
 
-func NewContentExtractor(bookRepo BookRepository, annotationRepo AnnotationRepository) *ContentExtractor {
+func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.AnnotationRepository) *ContentExtractor {
 	return &ContentExtractor{
 		bookRepo:       bookRepo,
 		annotationRepo: annotationRepo,
@@ -38,8 +50,6 @@ func (e *ContentExtractor) IngestRecords(reader io.Reader, origin string) {
 		origin, time.Now().Sub(begin).Milliseconds(), e.annotationsUpdated, e.annotationsInserted)
 }
 
-var bookMetadataRegex = regexp.MustCompile(`\(([^\)]+)\)`)
-
 func (e *ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	rows := strings.Split(annotation, "\n")
 	if len(rows) == 2 {
@@ -59,14 +69,6 @@ func (e *ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	e.processAnnotation(bookMetadata, annotationMetadata, annotationData, origin)
 }
 
-var annotationMetadataRegex = regexp.MustCompile(`- (?:Your )?(Note|Highlight) (?:(?:Loc.|on Page|on page) (\d+)(?: |-(\d+) )\| )?(?:(?:Location|(?:at )?location) (\d+)(?:-(\d+))? \| )?Added on (.*)`)
-
-var layouts = []string{
-	"Monday, January 2, 2006 3:04:05 PM",
-	"Monday, January 2, 2006 3:04 PM",
-	"Monday, 2 January 06 15:04:05",
-}
-
 func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
 	bookId := e.getBookId(bookMetadata)
 	annotationMetadataParsed := annotationMetadataRegex.FindAllStringSubmatch(annotationMetadata, -1)
@@ -75,21 +77,21 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 	}
 	matched := annotationMetadataParsed[0]
 	field := 1
-	var type_ annotationType
+	var type_ model.AnnotationType
 	switch matched[field] {
 	case "Highlight":
-		type_ = Highlight
+		type_ = model.Highlight
 	case "Note":
-		type_ = Note
+		type_ = model.Note
 	default:
 		log.Fatalf("Not supported type: %v", matched[field])
 	}
 	field++
-	location := Location{
-		PageStart:     MustItoa(matched[field]),
-		PageEnd:       MustItoa(matched[field+1]),
-		LocationStart: MustItoa(matched[field+2]),
-		LocationEnd:   MustItoa(matched[field+3]),
+	location := model.Location{
+		PageStart:     utils.MustItoa(matched[field]),
+		PageEnd:       utils.MustItoa(matched[field+1]),
+		LocationStart: utils.MustItoa(matched[field+2]),
+		LocationEnd:   utils.MustItoa(matched[field+3]),
 	}
 	field += 4
 	timeMatch := strings.TrimSpace(matched[field])
@@ -103,17 +105,17 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 		}
 	}
 	locationAsString, err := json.Marshal(location)
-	check(err)
-	annotation := Annotation{
-		id:       0,
-		bookId:   bookId,
-		text:     strings.Join(annotationData, "\n"),
-		location: string(locationAsString),
-		ts:       parsedTime,
-		origin:   origin,
-		type_:    type_,
+	utils.Check(err)
+	annotation := model.Annotation{
+		Id:       0,
+		BookId:   bookId,
+		Text:     strings.Join(annotationData, "\n"),
+		Location: string(locationAsString),
+		Ts:       parsedTime,
+		Origin:   origin,
+		Type:     type_,
 	}
-	if e.annotationRepo.upsertAnnotation(&annotation) {
+	if e.annotationRepo.UpsertAnnotation(&annotation) {
 		e.annotationsUpdated++
 	} else {
 		e.annotationsInserted++
@@ -129,5 +131,5 @@ func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
 		author = parenthesesBlocks[len(parenthesesBlocks)-1][1]
 		bookName = bookMetadata[0 : strings.LastIndex(bookMetadata, "(")-1]
 	}
-	return e.bookRepo.upsertBook(bookName, author)
+	return e.bookRepo.UpsertBook(bookName, author)
 }

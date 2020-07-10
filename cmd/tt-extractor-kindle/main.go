@@ -5,7 +5,8 @@ import (
 	"flag"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
-	extractor "github.com/milanaleksic/tt-extractor-kindle"
+	"github.com/milanaleksic/tt-extractor-kindle/kindle"
+	"github.com/milanaleksic/tt-extractor-kindle/model"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
@@ -61,9 +62,9 @@ func main() {
 			}
 		}
 	}()
-	contentExtractor := extractor.NewContentExtractor(
-		extractor.NewBookRepository(db),
-		extractor.NewAnnotationRepository(db),
+	contentExtractor := kindle.NewContentExtractor(
+		model.NewBookRepository(db),
+		model.NewAnnotationRepository(db),
 	)
 	if len(inputFileLocations) > 0 {
 		for _, inputFileLocation := range inputFileLocations {

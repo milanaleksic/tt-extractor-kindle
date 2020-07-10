@@ -1,26 +1,27 @@
-package tt_extractor_kindle
+package model
 
 import (
 	"database/sql"
+	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
 
-type annotationType string
+type AnnotationType string
 
 const (
-	Note      annotationType = "note"
-	Highlight annotationType = "highlight"
+	Note      AnnotationType = "note"
+	Highlight AnnotationType = "highlight"
 )
 
 type Annotation struct {
-	id       int64
-	bookId   int64
-	text     string
-	location string
-	ts       time.Time
-	origin   string
-	type_    annotationType
+	Id       int64
+	BookId   int64
+	Text     string
+	Location string
+	Ts       time.Time
+	Origin   string
+	Type     AnnotationType
 }
 
 type Location struct {
@@ -31,7 +32,7 @@ type Location struct {
 }
 
 type AnnotationRepository interface {
-	upsertAnnotation(a *Annotation) (existed bool)
+	UpsertAnnotation(a *Annotation) (existed bool)
 }
 
 type annotationRepository struct {
@@ -42,7 +43,7 @@ func NewAnnotationRepository(db *sql.DB) AnnotationRepository {
 	//TODO: can location have type json?
 	sqlStmt := `
 	create table if not exists annotation (
-		id integer not null primary key,
+		Id integer not null primary key,
 		book_id integer, 
 		text text,
 		location text,
@@ -60,27 +61,27 @@ func NewAnnotationRepository(db *sql.DB) AnnotationRepository {
 	}
 }
 
-func (r *annotationRepository) upsertAnnotation(a *Annotation) (existed bool) {
+func (r *annotationRepository) UpsertAnnotation(a *Annotation) (existed bool) {
 	tx, err := r.db.Begin()
-	check(err)
+	utils.Check(err)
 	if r.findExisting(a) {
-		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=?, type=? where id=?")
-		check(err)
+		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=?, type=? where Id=?")
+		utils.Check(err)
 		defer stmt.Close()
-		_, err = stmt.Exec(a.location, a.text, a.ts, a.origin, a.type_, a.id)
-		check(err)
-		log.Debugf("Updated existing annotation with id %v", a.id)
+		_, err = stmt.Exec(a.Location, a.Text, a.Ts, a.Origin, a.Type, a.Id)
+		utils.Check(err)
+		log.Debugf("Updated existing annotation with Id %v", a.Id)
 		existed = true
 	} else {
 		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin, type) values(?,?,?,?,?,?)")
-		check(err)
+		utils.Check(err)
 		defer stmt.Close()
-		insertResult, err := stmt.Exec(a.bookId, a.location, a.text, a.ts, a.origin, a.type_)
-		check(err)
+		insertResult, err := stmt.Exec(a.BookId, a.Location, a.Text, a.Ts, a.Origin, a.Type)
+		utils.Check(err)
 		annotationId, err := insertResult.LastInsertId()
-		check(err)
-		a.id = annotationId
-		log.Debugf("Inserted new annotation with id %v", a.id)
+		utils.Check(err)
+		a.Id = annotationId
+		log.Debugf("Inserted new annotation with Id %v", a.Id)
 		existed = false
 	}
 	tx.Commit()
@@ -88,12 +89,12 @@ func (r *annotationRepository) upsertAnnotation(a *Annotation) (existed bool) {
 }
 
 func (r *annotationRepository) findExisting(annotation *Annotation) bool {
-	rows, err := r.db.Query("select id from annotation where book_id=? and text=?", annotation.bookId, annotation.text)
-	check(err)
+	rows, err := r.db.Query("select Id from annotation where book_id=? and text=?", annotation.BookId, annotation.Text)
+	utils.Check(err)
 	defer rows.Close()
 	if rows.Next() {
-		err := rows.Scan(&annotation.id)
-		check(err)
+		err := rows.Scan(&annotation.Id)
+		utils.Check(err)
 		return true
 	}
 	return false

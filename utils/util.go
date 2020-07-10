@@ -1,4 +1,4 @@
-package tt_extractor_kindle
+package utils
 
 import (
 	log "github.com/sirupsen/logrus"
@@ -10,11 +10,11 @@ func MustItoa(s string) *int {
 		return nil
 	}
 	result, err := strconv.Atoi(s)
-	check(err)
+	Check(err)
 	return &result
 }
 
-func check(err error) {
+func Check(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}

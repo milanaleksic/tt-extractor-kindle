@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="tt-extractor-oreilly" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="tt_extractor_kindle" />
+    <working_directory value="$PROJECT_DIR$" />
+    <kind value="PACKAGE" />
+    <filePath value="$PROJECT_DIR$/cmd/tt-extractor-oreilly/main.go" />
+    <package value="github.com/milanaleksic/tt-extractor-kindle/cmd/tt-extractor-oreilly" />
+    <directory value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>
