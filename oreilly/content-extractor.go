@@ -48,6 +48,9 @@ func createCookieJar(cookiesMap map[string]string) *cookiejar.Jar {
 	utils.Check(err)
 	var cookies []*http.Cookie
 	for k, v := range cookiesMap {
+		if strings.Contains(v, `"`) {
+			continue
+		}
 		cookies = append(cookies, &http.Cookie{
 			Name:  k,
 			Value: v,
