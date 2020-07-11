@@ -39,27 +39,38 @@ func NewBookRepository(db *sql.DB) BookRepository {
 }
 
 func (r *bookRepository) UpsertBook(book *Book) (existed bool) {
-	rows, err := r.db.Query("select Id from book where name=?", book.Name)
+	tx, err := r.db.Begin()
 	utils.Check(err)
-	defer rows.Close()
-	if rows.Next() {
-		err = rows.Scan(&book.Id)
+	if r.findExisting(book) {
+		stmt, err := tx.Prepare("update book set isbn=?, name=?, authors=? where Id=?")
 		utils.Check(err)
-		err = rows.Err()
+		defer stmt.Close()
+		_, err = stmt.Exec(book.Isbn, book.Name, book.Authors, book.Id)
 		utils.Check(err)
+		log.Debugf("Updated existing annotation with Id %v", book.Id)
 		existed = true
 	} else {
-		tx, err := r.db.Begin()
-		utils.Check(err)
 		stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
 		utils.Check(err)
 		defer stmt.Close()
 		insertResult, err := stmt.Exec(book.Isbn, book.Name, book.Authors)
 		utils.Check(err)
-		tx.Commit()
 		bookId, err := insertResult.LastInsertId()
 		book.Id = bookId
 		existed = false
 	}
+	tx.Commit()
 	return
+}
+
+func (r *bookRepository) findExisting(book *Book) bool {
+	rows, err := r.db.Query("select Id from book where name=?", book.Name)
+	utils.Check(err)
+	defer rows.Close()
+	if rows.Next() {
+		err := rows.Scan(&book.Id)
+		utils.Check(err)
+		return true
+	}
+	return false
 }
