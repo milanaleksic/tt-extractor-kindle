@@ -49,7 +49,9 @@ func NewAnnotationRepository(db *sql.DB) AnnotationRepository {
 		location text,
 		ts timestamp,
 		origin text,
-		type text
+		type text,
+    FOREIGN KEY (book_id)
+       REFERENCES book (id) 
 	);
 	`
 	_, err := db.Exec(sqlStmt)
