@@ -41,7 +41,18 @@ func NewBookRepository(db *sql.DB) BookRepository {
 func (r *bookRepository) UpsertBook(book *Book) (existed bool) {
 	tx, err := r.db.Begin()
 	utils.Check(err)
-	if r.findExisting(book) {
+	existingBook, ok := r.findByName(book.Name)
+	if ok {
+		book.Id = existingBook.Id
+		if existingBook.Isbn != "" && book.Isbn == "" {
+			book.Isbn = existingBook.Isbn
+		}
+		if existingBook.Name != "" && book.Name == "" {
+			book.Name = existingBook.Name
+		}
+		if existingBook.Authors != "" && book.Authors == "" {
+			book.Authors = existingBook.Authors
+		}
 		stmt, err := tx.Prepare("update book set isbn=?, name=?, authors=? where Id=?")
 		utils.Check(err)
 		defer stmt.Close()
@@ -63,14 +74,15 @@ func (r *bookRepository) UpsertBook(book *Book) (existed bool) {
 	return
 }
 
-func (r *bookRepository) findExisting(book *Book) bool {
-	rows, err := r.db.Query("select Id from book where name=?", book.Name)
+func (r *bookRepository) findByName(name string) (book *Book, ok bool) {
+	rows, err := r.db.Query("select book.id, book.name, book.isbn, book.authors from book where name=?", name)
 	utils.Check(err)
 	defer rows.Close()
+	book = &Book{}
 	if rows.Next() {
-		err := rows.Scan(&book.Id)
+		err := rows.Scan(&book.Id, &book.Name, &book.Isbn, &book.Authors)
 		utils.Check(err)
-		return true
+		return book, true
 	}
-	return false
+	return nil, false
 }

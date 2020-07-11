@@ -18,6 +18,7 @@ var (
 		"Monday, January 2, 2006 3:04:05 PM",
 		"Monday, January 2, 2006 3:04 PM",
 		"Monday, 2 January 06 15:04:05",
+		"Monday, 2 January 2006 15:04:05",
 	}
 )
 
@@ -99,10 +100,14 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 	var parsedTime time.Time
 	var err error
 	for _, layout := range layouts {
-		parsedTime, err = time.Parse(layout, timeMatch)
+		t, err := time.Parse(layout, timeMatch)
 		if err == nil {
+			parsedTime = t
 			break
 		}
+	}
+	if parsedTime.IsZero() {
+		log.Fatalf("unexpected problem: time layout not supported %+v", timeMatch)
 	}
 	locationAsString, err := json.Marshal(location)
 	if err != nil {

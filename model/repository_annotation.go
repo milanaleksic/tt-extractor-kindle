@@ -64,7 +64,24 @@ func NewAnnotationRepository(db *sql.DB) AnnotationRepository {
 func (r *annotationRepository) UpsertAnnotation(a *Annotation) (existed bool) {
 	tx, err := r.db.Begin()
 	utils.Check(err)
-	if r.findExisting(a) {
+	existingA, ok := r.findByBookIdAndText(a.BookId, a.Text)
+	if ok {
+		a.Id = existingA.Id
+		if existingA.Location != "" && a.Location == "" {
+			a.Location = existingA.Location
+		}
+		if existingA.Text != "" && a.Text == "" {
+			a.Text = existingA.Text
+		}
+		if existingA.Ts.Unix() != 0 && a.Ts.Unix() == 0 {
+			a.Ts = existingA.Ts
+		}
+		if existingA.Origin != "" && a.Origin == "" {
+			a.Origin = existingA.Origin
+		}
+		if existingA.Type != "" && a.Type == "" {
+			a.Type = existingA.Type
+		}
 		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=?, type=? where Id=?")
 		utils.Check(err)
 		defer stmt.Close()
@@ -88,14 +105,15 @@ func (r *annotationRepository) UpsertAnnotation(a *Annotation) (existed bool) {
 	return
 }
 
-func (r *annotationRepository) findExisting(annotation *Annotation) bool {
-	rows, err := r.db.Query("select Id from annotation where book_id=? and text=?", annotation.BookId, annotation.Text)
+func (r *annotationRepository) findByBookIdAndText(bookId int64, text string) (a *Annotation, ok bool) {
+	rows, err := r.db.Query("select Id, book_id, location, text, ts, origin, type from annotation where book_id=? and text=?", bookId, text)
 	utils.Check(err)
 	defer rows.Close()
+	a = &Annotation{}
 	if rows.Next() {
-		err := rows.Scan(&annotation.Id)
+		err := rows.Scan(&a.Id, &a.BookId, &a.Location, &a.Text, &a.Ts, &a.Origin, &a.Type)
 		utils.Check(err)
-		return true
+		return a, true
 	}
-	return false
+	return nil, false
 }
