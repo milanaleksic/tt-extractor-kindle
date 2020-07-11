@@ -8,7 +8,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
 	"github.com/milanaleksic/tt-extractor-kindle/oreilly"
-	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 )
@@ -38,16 +37,26 @@ func main() {
 
 	var cookies map[string]string
 	cookiesBytes, err := ioutil.ReadFile(cookiesFile)
-	utils.Check(err)
+	if err != nil {
+		log.Fatalf("failed to open cookie JSON file, please look at the documentation how to make one: %v", err)
+	}
 	err = json.Unmarshal(cookiesBytes, &cookies)
-	utils.Check(err)
+	if err != nil {
+		log.Fatalf("failed to read the cookies JAR file, please look at the documentation how to make one: %v", err)
+	}
 
-	contentExtractor := oreilly.NewContentExtractor(
+	contentExtractor, err := oreilly.NewContentExtractor(
 		model.NewBookRepository(db),
 		model.NewAnnotationRepository(db),
 		cookies,
 	)
-	contentExtractor.IngestRecords()
+	if err != nil {
+		log.Fatalf("failed to create content extractor: %v", err)
+	}
+	err = contentExtractor.IngestRecords()
+	if err != nil {
+		log.Fatalf("failed ingesting annotations in oreilly learning platform: %v", err)
+	}
 }
 
 func prepareDatabase() *sql.DB {

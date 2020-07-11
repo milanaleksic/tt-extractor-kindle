@@ -6,15 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
-	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/http/cookiejar"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -30,34 +27,19 @@ type ContentExtractor struct {
 	client              *http.Client
 }
 
-func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.AnnotationRepository, cookies map[string]string) *ContentExtractor {
+func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.AnnotationRepository, cookies map[string]string) (*ContentExtractor, error) {
+	jar, err := createCookieJar(cookies)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cookie jar: %w", err)
+	}
 	return &ContentExtractor{
 		bookRepo:       bookRepo,
 		annotationRepo: annotationRepo,
 		client: &http.Client{
-			Jar:     createCookieJar(cookies),
+			Jar:     jar,
 			Timeout: 10 * time.Second,
 		},
-	}
-}
-
-func createCookieJar(cookiesMap map[string]string) *cookiejar.Jar {
-	jar, err := cookiejar.New(nil)
-	utils.Check(err)
-	parsedUrl, err := url.Parse(learningPlatformURL)
-	utils.Check(err)
-	var cookies []*http.Cookie
-	for k, v := range cookiesMap {
-		if strings.Contains(v, `"`) {
-			continue
-		}
-		cookies = append(cookies, &http.Cookie{
-			Name:  k,
-			Value: v,
-		})
-	}
-	jar.SetCookies(parsedUrl, cookies)
-	return jar
+	}, nil
 }
 
 func (e *ContentExtractor) IngestRecords() (err error) {

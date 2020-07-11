@@ -105,6 +105,9 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 		}
 	}
 	locationAsString, err := json.Marshal(location)
+	if err != nil {
+		log.Fatalf("unexpected problem: could not serialize into JSON %+v: %v", location, err)
+	}
 	utils.Check(err)
 	annotation := model.Annotation{
 		Id:       0,
@@ -131,5 +134,6 @@ func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
 		author = parenthesesBlocks[len(parenthesesBlocks)-1][1]
 		bookName = bookMetadata[0 : strings.LastIndex(bookMetadata, "(")-1]
 	}
-	return e.bookRepo.UpsertBook(bookName, author)
+	bookId, _ = e.bookRepo.UpsertBook(bookName, author)
+	return bookId
 }
