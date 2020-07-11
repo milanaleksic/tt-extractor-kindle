@@ -7,7 +7,7 @@ import (
 )
 
 type BookRepository interface {
-	UpsertBook(bookName, authors string) (bookId int64)
+	UpsertBook(bookName, authors string) (bookId int64, existed bool)
 }
 type bookRepository struct {
 	db *sql.DB
@@ -31,8 +31,8 @@ func NewBookRepository(db *sql.DB) BookRepository {
 	}
 }
 
-func (r *bookRepository) UpsertBook(bookName, authors string) (bookId int64) {
-	rows, err := r.db.Query("select Id from book where name=? and authors=?", bookName, authors)
+func (r *bookRepository) UpsertBook(bookName, authors string) (bookId int64, existed bool) {
+	rows, err := r.db.Query("select Id from book where name=?", bookName)
 	utils.Check(err)
 	defer rows.Close()
 	if rows.Next() {
@@ -40,6 +40,7 @@ func (r *bookRepository) UpsertBook(bookName, authors string) (bookId int64) {
 		utils.Check(err)
 		err = rows.Err()
 		utils.Check(err)
+		existed = true
 	} else {
 		tx, err := r.db.Begin()
 		utils.Check(err)
@@ -50,6 +51,7 @@ func (r *bookRepository) UpsertBook(bookName, authors string) (bookId int64) {
 		utils.Check(err)
 		tx.Commit()
 		bookId, err = insertResult.LastInsertId()
+		existed = false
 	}
 	return
 }

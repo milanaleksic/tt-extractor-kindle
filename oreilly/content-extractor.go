@@ -1,16 +1,22 @@
 package oreilly
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -52,22 +58,97 @@ func createCookieJar(cookiesMap map[string]string) *cookiejar.Jar {
 }
 
 func (e *ContentExtractor) IngestRecords() (err error) {
-	highlightsPage, err := e.getHighlightsPageLocationFromProfile()
+	highlightsPageLocation, err := e.getHighlightsPageLocationFromProfile()
 	if err != nil {
 		return fmt.Errorf("could not get user id: %w", err)
 	}
 
-	response, err := e.client.Get(highlightsPage)
+	response, err := e.client.Get(highlightsPageLocation)
 	if err != nil {
-		return fmt.Errorf("failed to fetch %v: %w", highlightsPage, err)
+		return fmt.Errorf("failed to fetch %v: %w", highlightsPageLocation, err)
 	}
 	defer response.Body.Close()
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read body from %v: %w", highlightsPage, err)
+		return fmt.Errorf("failed to read body from %v: %w", highlightsPageLocation, err)
 	}
-	log.Infof("Body of highlights page: %s", body)
-	return nil
+	log.Debugf("Body of highlights page: %s", body)
+
+	books, err := e.processHighlightsPageForBooks(body)
+	if err != nil {
+		return fmt.Errorf("failed to fetch books from highlights page: %w", err)
+	}
+	for _, book := range books {
+		_, existed := e.bookRepo.UpsertBook(book.name, "")
+		if existed {
+			log.Infof("Existing book found: %v", book.name)
+		} else {
+			log.Infof("New book added: %v", book.name)
+		}
+	}
+	return err
+}
+
+type bookLink struct {
+	url  string
+	name string
+}
+
+func (e *ContentExtractor) processHighlightsPageForBooks(body []byte) ([]*bookLink, error) {
+	books := make([]*bookLink, 0)
+	var bl *bookLink
+	z := html.NewTokenizer(bytes.NewReader(body))
+loop:
+	for {
+		tt := z.Next()
+		switch tt {
+		case html.ErrorToken:
+			if errors.Is(z.Err(), io.EOF) {
+				break loop
+			}
+			log.Warnf("Encountered unexpected error: %v", z.Err())
+			return nil, z.Err()
+		case html.TextToken:
+			if bl != nil {
+				bookName := string(z.Text())
+				if len(strings.TrimSpace(bookName)) > 0 {
+					log.Debugf("Encountered book: %v", bookName)
+					bl.name = bookName
+					books = append(books, bl)
+				}
+			}
+		case html.StartTagToken:
+			name, hasAttr := z.TagName()
+			if atom.Lookup(name) != atom.A || !hasAttr {
+				continue
+			}
+			isBookLink := false
+			href := ""
+			for {
+				k, v, more := z.TagAttr()
+				vs := string(v)
+				switch atom.Lookup(k) {
+				case atom.Class:
+					if strings.Contains(vs, "t-book-link") && !strings.Contains(vs, "all-books") {
+						isBookLink = true
+					}
+				case atom.Href:
+					href = vs
+				}
+				if !more {
+					break
+				}
+			}
+			if isBookLink {
+				bl = &bookLink{
+					url: href,
+				}
+			}
+		case html.EndTagToken:
+			bl = nil
+		}
+	}
+	return books, nil
 }
 
 func (e *ContentExtractor) getHighlightsPageLocationFromProfile() (highlightsPage string, err error) {
