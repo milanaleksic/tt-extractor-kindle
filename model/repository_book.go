@@ -6,8 +6,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type Book struct {
+	Id      int64
+	Name    string
+	Authors string
+	Isbn    string
+}
+
 type BookRepository interface {
-	UpsertBook(bookName, authors string) (bookId int64, existed bool)
+	UpsertBook(book *Book) (existed bool)
 }
 type bookRepository struct {
 	db *sql.DB
@@ -31,12 +38,12 @@ func NewBookRepository(db *sql.DB) BookRepository {
 	}
 }
 
-func (r *bookRepository) UpsertBook(bookName, authors string) (bookId int64, existed bool) {
-	rows, err := r.db.Query("select Id from book where name=?", bookName)
+func (r *bookRepository) UpsertBook(book *Book) (existed bool) {
+	rows, err := r.db.Query("select Id from book where name=?", book.Name)
 	utils.Check(err)
 	defer rows.Close()
 	if rows.Next() {
-		err = rows.Scan(&bookId)
+		err = rows.Scan(&book.Id)
 		utils.Check(err)
 		err = rows.Err()
 		utils.Check(err)
@@ -47,10 +54,11 @@ func (r *bookRepository) UpsertBook(bookName, authors string) (bookId int64, exi
 		stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
 		utils.Check(err)
 		defer stmt.Close()
-		insertResult, err := stmt.Exec("", bookName, authors)
+		insertResult, err := stmt.Exec(book.Isbn, book.Name, book.Authors)
 		utils.Check(err)
 		tx.Commit()
-		bookId, err = insertResult.LastInsertId()
+		bookId, err := insertResult.LastInsertId()
+		book.Id = bookId
 		existed = false
 	}
 	return

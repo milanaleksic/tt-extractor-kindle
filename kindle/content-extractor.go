@@ -134,6 +134,10 @@ func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
 		author = parenthesesBlocks[len(parenthesesBlocks)-1][1]
 		bookName = bookMetadata[0 : strings.LastIndex(bookMetadata, "(")-1]
 	}
-	bookId, _ = e.bookRepo.UpsertBook(bookName, author)
-	return bookId
+	book := &model.Book{
+		Name:    bookName,
+		Authors: author,
+	}
+	_ = e.bookRepo.UpsertBook(book)
+	return book.Id
 }
