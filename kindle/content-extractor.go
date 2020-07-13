@@ -113,7 +113,7 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 	if err != nil {
 		log.Fatalf("unexpected problem: could not serialize into JSON %+v: %v", location, err)
 	}
-	utils.Check(err)
+	utils.MustCheck(err)
 	annotation := model.Annotation{
 		Id:       0,
 		BookId:   bookId,
@@ -123,7 +123,12 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 		Origin:   origin,
 		Type:     type_,
 	}
-	if e.annotationRepo.UpsertAnnotation(&annotation) {
+	existed, err := e.annotationRepo.UpsertAnnotation(&annotation)
+	if err != nil {
+		log.Errorf("Failed to upsert an annotation: %v", err)
+		return
+	}
+	if existed {
 		e.annotationsUpdated++
 	} else {
 		e.annotationsInserted++
@@ -143,6 +148,10 @@ func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
 		Name:    bookName,
 		Authors: author,
 	}
-	_ = e.bookRepo.UpsertBook(book)
+	_, err := e.bookRepo.UpsertBook(book)
+	if err != nil {
+		log.Errorf("Failed to upsert a book: %v", err)
+		return
+	}
 	return book.Id
 }

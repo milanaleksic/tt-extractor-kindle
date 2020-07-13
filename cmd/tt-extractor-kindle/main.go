@@ -51,7 +51,11 @@ func init() {
 
 func main() {
 	db := prepareDatabase()
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Errorf("Failed to close the database database: %w", err)
+		}
+	}()
 
 	var openedFiles []io.Closer
 	defer func() {

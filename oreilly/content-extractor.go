@@ -82,7 +82,11 @@ func (e *ContentExtractor) ingestRecord(record []string) (err error) {
 	}
 	book.Isbn = submatch[0][0]
 
-	_ = e.bookRepo.UpsertBook(book)
+	_, err = e.bookRepo.UpsertBook(book)
+	if err != nil {
+		log.Errorf("Failed to upsert a book: %v", err)
+		return
+	}
 
 	parsedTime, err := time.Parse("2006-01-02", record[3])
 	if err != nil {
@@ -96,7 +100,12 @@ func (e *ContentExtractor) ingestRecord(record []string) (err error) {
 		Origin:   record[4],
 		Type:     model.Highlight,
 	}
-	if e.annotationRepo.UpsertAnnotation(a) {
+	existed, err := e.annotationRepo.UpsertAnnotation(a)
+	if err != nil {
+		log.Errorf("Failed to upsert an annotation: %v", err)
+		return
+	}
+	if existed {
 		e.annotationsUpdated++
 	} else {
 		e.annotationsInserted++

@@ -2,6 +2,7 @@ package utils
 
 import (
 	log "github.com/sirupsen/logrus"
+	"io"
 	"strconv"
 )
 
@@ -10,12 +11,18 @@ func MustItoa(s string) *int {
 		return nil
 	}
 	result, err := strconv.Atoi(s)
-	Check(err)
+	MustCheck(err)
 	return &result
 }
 
-func Check(err error) {
+func MustCheck(err error) {
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func SafeClose(c io.Closer, err *error) {
+	if cerr := c.Close(); cerr != nil && *err == nil {
+		*err = cerr
 	}
 }

@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
 )
@@ -14,7 +15,7 @@ type Book struct {
 }
 
 type BookRepository interface {
-	UpsertBook(book *Book) (existed bool)
+	UpsertBook(book *Book) (existed bool, err error)
 }
 type bookRepository struct {
 	db *sql.DB
@@ -38,10 +39,13 @@ func NewBookRepository(db *sql.DB) BookRepository {
 	}
 }
 
-func (r *bookRepository) UpsertBook(book *Book) (existed bool) {
+func (r *bookRepository) UpsertBook(book *Book) (existed bool, err error) {
 	tx, err := r.db.Begin()
-	utils.Check(err)
-	existingBook, ok := r.findByName(book.Name)
+	utils.MustCheck(err)
+	existingBook, ok, err := r.findByName(book.Name)
+	if err != nil {
+		return false, fmt.Errorf("failed to upsert book: %w", err)
+	}
 	if ok {
 		book.Id = existingBook.Id
 		if existingBook.Isbn != "" && book.Isbn == "" {
@@ -54,35 +58,43 @@ func (r *bookRepository) UpsertBook(book *Book) (existed bool) {
 			book.Authors = existingBook.Authors
 		}
 		stmt, err := tx.Prepare("update book set isbn=?, name=?, authors=? where Id=?")
-		utils.Check(err)
-		defer stmt.Close()
+		utils.MustCheck(err)
+		defer utils.SafeClose(stmt, &err)
 		_, err = stmt.Exec(book.Isbn, book.Name, book.Authors, book.Id)
-		utils.Check(err)
+		if err != nil {
+			return false, fmt.Errorf("failed to update existing book: %w", err)
+		}
 		log.Debugf("Updated existing annotation with Id %v", book.Id)
 		existed = true
 	} else {
 		stmt, err := tx.Prepare("insert into book(isbn, name, authors) values(?,?,?)")
-		utils.Check(err)
-		defer stmt.Close()
+		utils.MustCheck(err)
+		defer utils.SafeClose(stmt, &err)
 		insertResult, err := stmt.Exec(book.Isbn, book.Name, book.Authors)
-		utils.Check(err)
+		if err != nil {
+			return false, fmt.Errorf("failed to retrieve last inserted book: %w", err)
+		}
 		bookId, err := insertResult.LastInsertId()
 		book.Id = bookId
 		existed = false
 	}
-	tx.Commit()
+	utils.MustCheck(tx.Commit())
 	return
 }
 
-func (r *bookRepository) findByName(name string) (book *Book, ok bool) {
+func (r *bookRepository) findByName(name string) (book *Book, ok bool, err error) {
 	rows, err := r.db.Query("select book.id, book.name, book.isbn, book.authors from book where name=?", name)
-	utils.Check(err)
-	defer rows.Close()
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to run the query findByName: %w", err)
+	}
+	defer utils.SafeClose(rows, &err)
 	book = &Book{}
 	if rows.Next() {
 		err := rows.Scan(&book.Id, &book.Name, &book.Isbn, &book.Authors)
-		utils.Check(err)
-		return book, true
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to scan successfully retrieved result set for book: %w", err)
+		}
+		return book, true, nil
 	}
-	return nil, false
+	return nil, false, nil
 }

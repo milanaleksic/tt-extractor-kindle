@@ -32,7 +32,11 @@ func init() {
 
 func main() {
 	db := prepareDatabase()
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Errorf("Failed to close the database connection: %w", err)
+		}
+	}()
 
 	contentExtractor := oreilly.NewContentExtractor(
 		model.NewBookRepository(db),
@@ -43,7 +47,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open input file: %s, reason: %v", csvInput, err)
 	}
-	defer f.Close()
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			log.Warnf("Failed to close file %v, err=%v", f, err)
+		}
+	}()
 	err = contentExtractor.IngestRecords(f)
 	if err != nil {
 		log.Fatalf("failed ingesting annotations in oreilly learning platform: %v", err)

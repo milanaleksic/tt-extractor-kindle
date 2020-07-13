@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
 	"time"
@@ -32,7 +33,7 @@ type Location struct {
 }
 
 type AnnotationRepository interface {
-	UpsertAnnotation(a *Annotation) (existed bool)
+	UpsertAnnotation(a *Annotation) (existed bool, err error)
 }
 
 type annotationRepository struct {
@@ -63,10 +64,13 @@ func NewAnnotationRepository(db *sql.DB) AnnotationRepository {
 	}
 }
 
-func (r *annotationRepository) UpsertAnnotation(a *Annotation) (existed bool) {
+func (r *annotationRepository) UpsertAnnotation(a *Annotation) (existed bool, err error) {
 	tx, err := r.db.Begin()
-	utils.Check(err)
-	existingA, ok := r.findByBookIdAndText(a.BookId, a.Text)
+	utils.MustCheck(err)
+	existingA, ok, err := r.findByBookIdAndText(a.BookId, a.Text)
+	if err != nil {
+		return false, fmt.Errorf("failed to upsert annotation: %w", err)
+	}
 	if ok {
 		a.Id = existingA.Id
 		if existingA.Location != "" && a.Location == "" {
@@ -85,37 +89,47 @@ func (r *annotationRepository) UpsertAnnotation(a *Annotation) (existed bool) {
 			a.Type = existingA.Type
 		}
 		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=?, type=? where Id=?")
-		utils.Check(err)
-		defer stmt.Close()
+		utils.MustCheck(err)
+		defer utils.SafeClose(stmt, &err)
 		_, err = stmt.Exec(a.Location, a.Text, a.Ts, a.Origin, a.Type, a.Id)
-		utils.Check(err)
+		if err != nil {
+			return false, fmt.Errorf("failed to update existing annotation: %w", err)
+		}
 		log.Debugf("Updated existing annotation with Id %v", a.Id)
 		existed = true
 	} else {
 		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin, type) values(?,?,?,?,?,?)")
-		utils.Check(err)
-		defer stmt.Close()
+		utils.MustCheck(err)
+		defer utils.SafeClose(stmt, &err)
 		insertResult, err := stmt.Exec(a.BookId, a.Location, a.Text, a.Ts, a.Origin, a.Type)
-		utils.Check(err)
+		if err != nil {
+			return false, fmt.Errorf("failed to insert new annotation: %w", err)
+		}
 		annotationId, err := insertResult.LastInsertId()
-		utils.Check(err)
+		if err != nil {
+			return false, fmt.Errorf("failed to retrieve last inserted annotation: %w", err)
+		}
 		a.Id = annotationId
 		log.Debugf("Inserted new annotation with Id %v", a.Id)
 		existed = false
 	}
-	tx.Commit()
+	utils.MustCheck(tx.Commit())
 	return
 }
 
-func (r *annotationRepository) findByBookIdAndText(bookId int64, text string) (a *Annotation, ok bool) {
+func (r *annotationRepository) findByBookIdAndText(bookId int64, text string) (a *Annotation, ok bool, err error) {
 	rows, err := r.db.Query("select Id, book_id, location, text, ts, origin, type from annotation where book_id=? and text=?", bookId, text)
-	utils.Check(err)
-	defer rows.Close()
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to run the query findByBookIdAndText: %w", err)
+	}
+	defer utils.SafeClose(rows, &err)
 	a = &Annotation{}
 	if rows.Next() {
 		err := rows.Scan(&a.Id, &a.BookId, &a.Location, &a.Text, &a.Ts, &a.Origin, &a.Type)
-		utils.Check(err)
-		return a, true
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to scan successfully retrieved result set for annotation: %w", err)
+		}
+		return a, true, nil
 	}
-	return nil, false
+	return nil, false, nil
 }
