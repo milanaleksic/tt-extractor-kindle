@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
@@ -15,13 +16,13 @@ type Book struct {
 }
 
 type BookRepository interface {
-	UpsertBook(book *Book) (existed bool, err error)
+	UpsertBook(ctx context.Context, book *Book) (existed bool, err error)
 }
 type bookRepository struct {
 	db *sql.DB
 }
 
-func NewBookRepository(db *sql.DB) BookRepository {
+func NewDBBookRepository(db *sql.DB) BookRepository {
 	sqlStmt := `
 	create table if not exists book (
 		Id integer not null primary key, 
@@ -39,7 +40,7 @@ func NewBookRepository(db *sql.DB) BookRepository {
 	}
 }
 
-func (r *bookRepository) UpsertBook(book *Book) (existed bool, err error) {
+func (r *bookRepository) UpsertBook(ctx context.Context, book *Book) (existed bool, err error) {
 	tx, err := r.db.Begin()
 	utils.MustCheck(err)
 	existingBook, ok, err := r.findByName(book.Name)

@@ -1,6 +1,7 @@
 package kindle
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
@@ -36,13 +37,13 @@ func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.Ann
 	}
 }
 
-func (e *ContentExtractor) IngestRecords(reader io.Reader, origin string) {
+func (e *ContentExtractor) IngestRecords(ctx context.Context, reader io.Reader, origin string) {
 	begin := time.Now()
 	scanner := configureScanner(reader)
 	for scanner.Scan() {
 		l := scanner.Text()
 		log.Debugf("Encountered line ", l)
-		e.ingestAnnotation(l, origin)
+		e.ingestAnnotation(ctx, l, origin)
 	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
@@ -51,7 +52,7 @@ func (e *ContentExtractor) IngestRecords(reader io.Reader, origin string) {
 		origin, time.Now().Sub(begin).Milliseconds(), e.annotationsUpdated, e.annotationsInserted)
 }
 
-func (e *ContentExtractor) ingestAnnotation(annotation string, origin string) {
+func (e *ContentExtractor) ingestAnnotation(ctx context.Context, annotation string, origin string) {
 	rows := strings.Split(annotation, "\n")
 	if len(rows) == 2 {
 		log.Debugf("Ignored empty annotation: %v", annotation)
@@ -67,11 +68,11 @@ func (e *ContentExtractor) ingestAnnotation(annotation string, origin string) {
 	annotationMetadata := rows[1]
 	annotationData := rows[3:]
 
-	e.processAnnotation(bookMetadata, annotationMetadata, annotationData, origin)
+	e.processAnnotation(ctx, bookMetadata, annotationMetadata, annotationData, origin)
 }
 
-func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
-	bookId := e.getBookId(bookMetadata)
+func (e *ContentExtractor) processAnnotation(ctx context.Context, bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
+	bookId := e.getBookId(ctx, bookMetadata)
 	annotationMetadataParsed := annotationMetadataRegex.FindAllStringSubmatch(annotationMetadata, -1)
 	if len(annotationMetadataParsed) == 0 {
 		log.Fatalf("Failed to match annotation regex in: %v", annotationMetadata)
@@ -123,7 +124,7 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 		Origin:   origin,
 		Type:     type_,
 	}
-	existed, err := e.annotationRepo.UpsertAnnotation(&annotation)
+	existed, err := e.annotationRepo.UpsertAnnotation(ctx, &annotation)
 	if err != nil {
 		log.Errorf("Failed to upsert an annotation: %v", err)
 		return
@@ -135,7 +136,7 @@ func (e *ContentExtractor) processAnnotation(bookMetadata string, annotationMeta
 	}
 }
 
-func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
+func (e *ContentExtractor) getBookId(ctx context.Context, bookMetadata string) (bookId int64) {
 	parenthesesBlocks := bookMetadataRegex.FindAllStringSubmatch(bookMetadata, -1)
 	author := ""
 	bookName := bookMetadata
@@ -148,7 +149,7 @@ func (e *ContentExtractor) getBookId(bookMetadata string) (bookId int64) {
 		Name:    bookName,
 		Authors: author,
 	}
-	_, err := e.bookRepo.UpsertBook(book)
+	_, err := e.bookRepo.UpsertBook(ctx, book)
 	if err != nil {
 		log.Errorf("Failed to upsert a book: %v", err)
 		return

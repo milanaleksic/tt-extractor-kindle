@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
@@ -33,14 +34,14 @@ type Location struct {
 }
 
 type AnnotationRepository interface {
-	UpsertAnnotation(a *Annotation) (existed bool, err error)
+	UpsertAnnotation(ctx context.Context, a *Annotation) (existed bool, err error)
 }
 
 type annotationRepository struct {
 	db *sql.DB
 }
 
-func NewAnnotationRepository(db *sql.DB) AnnotationRepository {
+func NewDBAnnotationRepository(db *sql.DB) AnnotationRepository {
 	//TODO: can location have type json?
 	sqlStmt := `
 	create table if not exists annotation (
@@ -64,7 +65,7 @@ func NewAnnotationRepository(db *sql.DB) AnnotationRepository {
 	}
 }
 
-func (r *annotationRepository) UpsertAnnotation(a *Annotation) (existed bool, err error) {
+func (r *annotationRepository) UpsertAnnotation(ctx context.Context, a *Annotation) (existed bool, err error) {
 	tx, err := r.db.Begin()
 	utils.MustCheck(err)
 	existingA, ok, err := r.findByBookIdAndText(a.BookId, a.Text)

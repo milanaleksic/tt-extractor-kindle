@@ -1,6 +1,7 @@
 package oreilly
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
@@ -40,7 +41,7 @@ func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.Ann
 	}
 }
 
-func (e *ContentExtractor) IngestRecords(reader io.Reader) (err error) {
+func (e *ContentExtractor) IngestRecords(ctx context.Context, reader io.Reader) (err error) {
 	begin := time.Now()
 	r := csv.NewReader(reader)
 	firstRecord := true
@@ -58,7 +59,7 @@ func (e *ContentExtractor) IngestRecords(reader io.Reader) (err error) {
 			}
 			firstRecord = false
 		} else {
-			err := e.ingestRecord(record)
+			err := e.ingestRecord(ctx, record)
 			if err != nil {
 				return fmt.Errorf("error while ingesting row %+v: %w", record, err)
 			}
@@ -69,7 +70,7 @@ func (e *ContentExtractor) IngestRecords(reader io.Reader) (err error) {
 	return err
 }
 
-func (e *ContentExtractor) ingestRecord(record []string) (err error) {
+func (e *ContentExtractor) ingestRecord(ctx context.Context, record []string) (err error) {
 	book := &model.Book{
 		Name:    record[0],
 		Authors: record[1],
@@ -82,7 +83,7 @@ func (e *ContentExtractor) ingestRecord(record []string) (err error) {
 	}
 	book.Isbn = submatch[0][0]
 
-	_, err = e.bookRepo.UpsertBook(book)
+	_, err = e.bookRepo.UpsertBook(ctx, book)
 	if err != nil {
 		log.Errorf("Failed to upsert a book: %v", err)
 		return
@@ -100,7 +101,7 @@ func (e *ContentExtractor) ingestRecord(record []string) (err error) {
 		Origin:   record[4],
 		Type:     model.Highlight,
 	}
-	existed, err := e.annotationRepo.UpsertAnnotation(a)
+	existed, err := e.annotationRepo.UpsertAnnotation(ctx, a)
 	if err != nil {
 		log.Errorf("Failed to upsert an annotation: %v", err)
 		return

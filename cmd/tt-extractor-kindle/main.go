@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -67,9 +68,12 @@ func main() {
 		}
 	}()
 	contentExtractor := kindle.NewContentExtractor(
-		model.NewBookRepository(db),
-		model.NewAnnotationRepository(db),
+		model.NewDBBookRepository(db),
+		model.NewDBAnnotationRepository(db),
 	)
+
+	ctx := context.Background()
+
 	if len(inputFileLocations) > 0 {
 		for _, inputFileLocation := range inputFileLocations {
 			f, err := os.Open(inputFileLocation)
@@ -77,11 +81,11 @@ func main() {
 				log.Fatalf("Failed to open input file: %s, reason: %v", inputFileLocation, err)
 			}
 			openedFiles = append(openedFiles, f)
-			contentExtractor.IngestRecords(f, f.Name())
+			contentExtractor.IngestRecords(ctx, f, f.Name())
 		}
 	} else {
 		_, _ = fmt.Fprintln(os.Stderr, "Reading from stdin")
-		contentExtractor.IngestRecords(os.Stdin, "stdin")
+		contentExtractor.IngestRecords(ctx, os.Stdin, "stdin")
 	}
 }
 

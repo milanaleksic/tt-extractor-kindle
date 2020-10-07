@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -39,9 +40,11 @@ func main() {
 	}()
 
 	contentExtractor := oreilly.NewContentExtractor(
-		model.NewBookRepository(db),
-		model.NewAnnotationRepository(db),
+		model.NewDBBookRepository(db),
+		model.NewDBAnnotationRepository(db),
 	)
+
+	ctx := context.Background()
 
 	f, err := os.Open(csvInput)
 	if err != nil {
@@ -53,7 +56,7 @@ func main() {
 			log.Warnf("Failed to close file %v, err=%v", f, err)
 		}
 	}()
-	err = contentExtractor.IngestRecords(f)
+	err = contentExtractor.IngestRecords(ctx, f)
 	if err != nil {
 		log.Fatalf("failed ingesting annotations in oreilly learning platform: %v", err)
 	}
