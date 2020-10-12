@@ -2,7 +2,6 @@ package kindle
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
@@ -110,16 +109,11 @@ func (e *ContentExtractor) processAnnotation(ctx context.Context, bookMetadata s
 	if parsedTime.IsZero() {
 		log.Fatalf("unexpected problem: time layout not supported %+v", timeMatch)
 	}
-	locationAsString, err := json.Marshal(location)
-	if err != nil {
-		log.Fatalf("unexpected problem: could not serialize into JSON %+v: %v", location, err)
-	}
-	utils.MustCheck(err)
 	annotation := model.Annotation{
 		Id:       0,
 		BookId:   bookId,
 		Text:     strings.Join(annotationData, "\n"),
-		Location: string(locationAsString),
+		Location: location,
 		Ts:       parsedTime,
 		Origin:   origin,
 		Type:     type_,

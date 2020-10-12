@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
@@ -20,7 +21,7 @@ type Annotation struct {
 	Id       int64
 	BookId   int64
 	Text     string
-	Location string
+	Location Location
 	Ts       time.Time
 	Origin   string
 	Type     AnnotationType
@@ -31,6 +32,11 @@ type Location struct {
 	PageEnd       *int `json:"pageEnd,omitempty"`
 	LocationStart *int `json:"locationStart,omitempty"`
 	LocationEnd   *int `json:"locationEnd,omitempty"`
+}
+
+func (l Location) IsEmpty() bool {
+	return l.PageStart == nil && l.PageEnd == nil &&
+		l.LocationStart == nil && l.LocationEnd == nil
 }
 
 type AnnotationRepository interface {
@@ -74,7 +80,7 @@ func (r *annotationRepository) UpsertAnnotation(ctx context.Context, a *Annotati
 	}
 	if ok {
 		a.Id = existingA.Id
-		if existingA.Location != "" && a.Location == "" {
+		if !existingA.Location.IsEmpty() && !a.Location.IsEmpty() {
 			a.Location = existingA.Location
 		}
 		if existingA.Text != "" && a.Text == "" {
@@ -92,7 +98,12 @@ func (r *annotationRepository) UpsertAnnotation(ctx context.Context, a *Annotati
 		stmt, err := tx.Prepare("update annotation set location=?, text=?, ts=?, origin=?, type=? where Id=?")
 		utils.MustCheck(err)
 		defer utils.SafeClose(stmt, &err)
-		_, err = stmt.Exec(a.Location, a.Text, a.Ts, a.Origin, a.Type, a.Id)
+		locationAsString, err := json.Marshal(a.Location)
+		if err != nil {
+			log.Fatalf("unexpected problem: could not serialize into JSON %+v: %v", a.Location, err)
+		}
+		utils.MustCheck(err)
+		_, err = stmt.Exec(locationAsString, a.Text, a.Ts, a.Origin, a.Type, a.Id)
 		if err != nil {
 			return false, fmt.Errorf("failed to update existing annotation: %w", err)
 		}
@@ -102,7 +113,12 @@ func (r *annotationRepository) UpsertAnnotation(ctx context.Context, a *Annotati
 		stmt, err := tx.Prepare("insert into annotation(book_id, location, text, ts, origin, type) values(?,?,?,?,?,?)")
 		utils.MustCheck(err)
 		defer utils.SafeClose(stmt, &err)
-		insertResult, err := stmt.Exec(a.BookId, a.Location, a.Text, a.Ts, a.Origin, a.Type)
+		locationAsString, err := json.Marshal(a.Location)
+		if err != nil {
+			log.Fatalf("unexpected problem: could not serialize into JSON %+v: %v", a.Location, err)
+		}
+		utils.MustCheck(err)
+		insertResult, err := stmt.Exec(a.BookId, locationAsString, a.Text, a.Ts, a.Origin, a.Type)
 		if err != nil {
 			return false, fmt.Errorf("failed to insert new annotation: %w", err)
 		}
@@ -125,11 +141,19 @@ func (r *annotationRepository) findByBookIdAndText(bookId int64, text string) (a
 	}
 	defer utils.SafeClose(rows, &err)
 	a = &Annotation{}
+	var locationAsString string
 	if rows.Next() {
-		err := rows.Scan(&a.Id, &a.BookId, &a.Location, &a.Text, &a.Ts, &a.Origin, &a.Type)
+		err := rows.Scan(&a.Id, &a.BookId, &locationAsString, &a.Text, &a.Ts, &a.Origin, &a.Type)
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to scan successfully retrieved result set for annotation: %w", err)
 		}
+		if locationAsString != "" {
+			err = json.Unmarshal([]byte(locationAsString), &a.Location)
+			if err != nil {
+				log.Fatalf("unexpected problem: could not deserialize into JSON %+v: %v", a.Location, err)
+			}
+		}
+		utils.MustCheck(err)
 		return a, true, nil
 	}
 	return nil, false, nil

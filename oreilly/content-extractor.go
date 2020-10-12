@@ -96,7 +96,7 @@ func (e *ContentExtractor) ingestRecord(ctx context.Context, record []string) (e
 	a := &model.Annotation{
 		BookId:   book.Id,
 		Text:     record[7],
-		Location: "",
+		Location: model.Location{},
 		Ts:       parsedTime,
 		Origin:   record[4],
 		Type:     model.Highlight,
