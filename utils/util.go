@@ -11,7 +11,10 @@ func MustItoa(s string) *int {
 		return nil
 	}
 	result, err := strconv.Atoi(s)
-	MustCheck(err)
+	if err != nil {
+		log.Errorf("Failed to convert string %v to integer", s)
+		return nil
+	}
 	return &result
 }
 

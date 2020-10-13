@@ -2,6 +2,7 @@ package kindle
 
 import (
 	"context"
+	"fmt"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
 	"github.com/milanaleksic/tt-extractor-kindle/utils"
 	log "github.com/sirupsen/logrus"
@@ -27,39 +28,44 @@ type ContentExtractor struct {
 	annotationRepo      model.AnnotationRepository
 	annotationsUpdated  int
 	annotationsInserted int
+	origin              string
 }
 
-func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.AnnotationRepository) *ContentExtractor {
+func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.AnnotationRepository, origin string) *ContentExtractor {
 	return &ContentExtractor{
 		bookRepo:       bookRepo,
 		annotationRepo: annotationRepo,
+		origin:         origin,
 	}
 }
-
-func (e *ContentExtractor) IngestRecords(ctx context.Context, reader io.Reader, origin string) {
+func (e *ContentExtractor) IngestRecords(ctx context.Context, reader io.Reader) (err error) {
 	begin := time.Now()
 	scanner := configureScanner(reader)
 	for scanner.Scan() {
 		l := scanner.Text()
 		log.Debugf("Encountered line ", l)
-		e.ingestAnnotation(ctx, l, origin)
+		err := e.ingestAnnotation(ctx, l, e.origin)
+		if err != nil {
+			return err
+		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Infof("Ingestion completed from origin %v in %dms; updated %v annotations and created %v new ones",
-		origin, time.Now().Sub(begin).Milliseconds(), e.annotationsUpdated, e.annotationsInserted)
+		e.origin, time.Now().Sub(begin).Milliseconds(), e.annotationsUpdated, e.annotationsInserted)
+	return nil
 }
 
-func (e *ContentExtractor) ingestAnnotation(ctx context.Context, annotation string, origin string) {
+func (e *ContentExtractor) ingestAnnotation(ctx context.Context, annotation string, origin string) error {
 	rows := strings.Split(annotation, "\n")
 	if len(rows) == 2 {
 		log.Debugf("Ignored empty annotation: %v", annotation)
-		return
+		return nil
 	}
 	emptyLine := rows[2]
 	if len(strings.TrimSpace(emptyLine)) > 0 {
-		log.Fatalf("Expected empty line but encountered: '%v'", emptyLine)
+		return fmt.Errorf("Expected empty line but encountered: '%v'", emptyLine)
 	}
 	// TODO: store data
 	bookMetadata := rows[0]
@@ -67,14 +73,14 @@ func (e *ContentExtractor) ingestAnnotation(ctx context.Context, annotation stri
 	annotationMetadata := rows[1]
 	annotationData := rows[3:]
 
-	e.processAnnotation(ctx, bookMetadata, annotationMetadata, annotationData, origin)
+	return e.processAnnotation(ctx, bookMetadata, annotationMetadata, annotationData, origin)
 }
 
-func (e *ContentExtractor) processAnnotation(ctx context.Context, bookMetadata string, annotationMetadata string, annotationData []string, origin string) {
+func (e *ContentExtractor) processAnnotation(ctx context.Context, bookMetadata string, annotationMetadata string, annotationData []string, origin string) error {
 	bookId := e.getBookId(ctx, bookMetadata)
 	annotationMetadataParsed := annotationMetadataRegex.FindAllStringSubmatch(annotationMetadata, -1)
 	if len(annotationMetadataParsed) == 0 {
-		log.Fatalf("Failed to match annotation regex in: %v", annotationMetadata)
+		return fmt.Errorf("Failed to match annotation regex in: %v", annotationMetadata)
 	}
 	matched := annotationMetadataParsed[0]
 	field := 1
@@ -85,7 +91,7 @@ func (e *ContentExtractor) processAnnotation(ctx context.Context, bookMetadata s
 	case "Note":
 		type_ = model.Note
 	default:
-		log.Fatalf("Not supported type: %v", matched[field])
+		return fmt.Errorf("Not supported type: %v", matched[field])
 	}
 	field++
 	location := model.Location{
@@ -107,7 +113,7 @@ func (e *ContentExtractor) processAnnotation(ctx context.Context, bookMetadata s
 		}
 	}
 	if parsedTime.IsZero() {
-		log.Fatalf("unexpected problem: time layout not supported %+v", timeMatch)
+		return fmt.Errorf("unexpected problem: time layout not supported %+v", timeMatch)
 	}
 	annotation := model.Annotation{
 		Id:       0,
@@ -121,13 +127,14 @@ func (e *ContentExtractor) processAnnotation(ctx context.Context, bookMetadata s
 	existed, err := e.annotationRepo.UpsertAnnotation(ctx, &annotation)
 	if err != nil {
 		log.Errorf("Failed to upsert an annotation: %v", err)
-		return
+		return nil
 	}
 	if existed {
 		e.annotationsUpdated++
 	} else {
 		e.annotationsInserted++
 	}
+	return nil
 }
 
 func (e *ContentExtractor) getBookId(ctx context.Context, bookMetadata string) (bookId int64) {

@@ -67,10 +67,6 @@ func main() {
 			}
 		}
 	}()
-	contentExtractor := kindle.NewContentExtractor(
-		model.NewDBBookRepository(db),
-		model.NewDBAnnotationRepository(db),
-	)
 
 	ctx := context.Background()
 
@@ -81,11 +77,26 @@ func main() {
 				log.Fatalf("Failed to open input file: %s, reason: %v", inputFileLocation, err)
 			}
 			openedFiles = append(openedFiles, f)
-			contentExtractor.IngestRecords(ctx, f, f.Name())
+
+			contentExtractor := kindle.NewContentExtractor(
+				model.NewDBBookRepository(db),
+				model.NewDBAnnotationRepository(db),
+				f.Name(),
+			)
+			if err = contentExtractor.IngestRecords(ctx, f); err != nil {
+				log.Fatalf("failed to ingest records for %v: %v", inputFileLocation, err)
+			}
 		}
 	} else {
 		_, _ = fmt.Fprintln(os.Stderr, "Reading from stdin")
-		contentExtractor.IngestRecords(ctx, os.Stdin, "stdin")
+		contentExtractor := kindle.NewContentExtractor(
+			model.NewDBBookRepository(db),
+			model.NewDBAnnotationRepository(db),
+			"stdin",
+		)
+		if err := contentExtractor.IngestRecords(ctx, os.Stdin); err != nil {
+			log.Fatalf("failed to ingest records from standard input: %v", err)
+		}
 	}
 }
 

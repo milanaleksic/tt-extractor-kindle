@@ -51,11 +51,11 @@ func (e *ContentExtractor) IngestRecords(ctx context.Context, reader io.Reader) 
 			break
 		}
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if firstRecord {
 			if !reflect.DeepEqual(record, supportedCsvFormat) {
-				log.Fatalf("CSV does not have expected format: %+v encountered, but expected: %v", record, supportedCsvFormat)
+				return fmt.Errorf("CSV does not have expected format: %+v encountered, but expected: %v", record, supportedCsvFormat)
 			}
 			firstRecord = false
 		} else {
