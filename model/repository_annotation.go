@@ -61,6 +61,7 @@ func NewDBAnnotationRepository(db *sql.DB) AnnotationRepository {
     FOREIGN KEY (book_id)
        REFERENCES book (id) 
 	);
+    create index if not exists annotation_text on annotation(book_id, text);
 	`
 	_, err := db.Exec(sqlStmt)
 	if err != nil {

@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/milanaleksic/tt-extractor-kindle/model"
 	"github.com/milanaleksic/tt-extractor-kindle/oreilly"
 	log "github.com/sirupsen/logrus"
+	_ "modernc.org/sqlite"
 	"os"
 )
 
@@ -63,7 +63,7 @@ func main() {
 }
 
 func prepareDatabase() *sql.DB {
-	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?cache=shared", databaseLocation))
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?cache=shared&journal_mode=WAL", databaseLocation))
 	if err != nil {
 		log.Fatalf("Failed to open database file: %s, reason: %v", databaseLocation, err)
 	}
