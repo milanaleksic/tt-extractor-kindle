@@ -56,7 +56,7 @@ type ContentExtractor struct {
 
 func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.AnnotationRepository) *ContentExtractor {
 	return &ContentExtractor{
-		bookRepo:       bookRepo,
+		bookRepo:       model.NewCachedBookRepository(bookRepo),
 		annotationRepo: annotationRepo,
 	}
 }

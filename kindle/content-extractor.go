@@ -29,15 +29,13 @@ type ContentExtractor struct {
 	annotationsUpdated  int
 	annotationsInserted int
 	origin              string
-	knownBooks          map[string]model.Book
 }
 
 func NewContentExtractor(bookRepo model.BookRepository, annotationRepo model.AnnotationRepository, origin string) *ContentExtractor {
 	return &ContentExtractor{
-		bookRepo:       bookRepo,
+		bookRepo:       model.NewCachedBookRepository(bookRepo),
 		annotationRepo: annotationRepo,
 		origin:         origin,
-		knownBooks:     make(map[string]model.Book),
 	}
 }
 func (e *ContentExtractor) IngestRecords(ctx context.Context, reader io.Reader) (err error) {
@@ -152,30 +150,10 @@ func (e *ContentExtractor) getBookId(ctx context.Context, bookMetadata string) (
 		Name:    bookName,
 		Authors: author,
 	}
-	_, err := e.upsertBook(ctx, book)
+	_, err := e.bookRepo.UpsertBook(ctx, book)
 	if err != nil {
 		log.Errorf("Failed to upsert a book: %v", err)
 		return
 	}
 	return book.Id
-}
-
-func (e *ContentExtractor) Hash(b model.Book) string {
-	return fmt.Sprintf("%s/%s", b.Isbn, b.Name)
-}
-
-func (e *ContentExtractor) upsertBook(ctx context.Context, book *model.Book) (bool, error) {
-	if cachedBook, ok := e.knownBooks[e.Hash(*book)]; ok {
-		log.Debugf("Skipping book update for %v", book)
-		book.Id = cachedBook.Id
-		book.Name = cachedBook.Name
-		book.Isbn = cachedBook.Isbn
-		book.Authors = cachedBook.Authors
-		return true, nil
-	}
-	existed, err := e.bookRepo.UpsertBook(ctx, book)
-	if err != nil {
-		e.knownBooks[e.Hash(*book)] = *book
-	}
-	return existed, err
 }
