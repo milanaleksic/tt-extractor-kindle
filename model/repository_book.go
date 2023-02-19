@@ -15,16 +15,11 @@ type Book struct {
 	Isbn    string
 }
 
-func (b *Book) hash() string {
-	return fmt.Sprintf("%s/%s", b.Isbn, b.Name)
-}
-
 type BookRepository interface {
 	UpsertBook(ctx context.Context, book *Book) (existed bool, err error)
 }
 type bookRepository struct {
 	db         *sql.DB
-	knownBooks map[string]Book
 }
 
 func NewDBBookRepository(db *sql.DB) BookRepository {
@@ -44,19 +39,10 @@ func NewDBBookRepository(db *sql.DB) BookRepository {
 	}
 	return &bookRepository{
 		db:         db,
-		knownBooks: make(map[string]Book),
 	}
 }
 
 func (r *bookRepository) UpsertBook(ctx context.Context, book *Book) (existed bool, err error) {
-	if cachedBook, ok := r.knownBooks[book.hash()]; ok {
-		log.Debugf("Skipping book update for %v", book)
-		book.Id = cachedBook.Id
-		book.Name = cachedBook.Name
-		book.Isbn = cachedBook.Isbn
-		book.Authors = cachedBook.Authors
-		return true, nil
-	}
 	tx, err := r.db.Begin()
 	utils.MustCheck(err)
 	existingBook, err := r.find(book)
@@ -96,7 +82,6 @@ func (r *bookRepository) UpsertBook(ctx context.Context, book *Book) (existed bo
 		existed = false
 	}
 	utils.MustCheck(tx.Commit())
-	r.knownBooks[book.hash()] = *book
 	return
 }
 
