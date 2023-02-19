@@ -28,7 +28,7 @@ func (c *CachedBookRepository) UpsertBook(ctx context.Context, book *Book) (bool
 		return true, nil
 	}
 	existed, err := c.delegate.UpsertBook(ctx, book)
-	if err != nil {
+	if err == nil {
 		c.knownBooks[c.Hash(*book)] = *book
 	}
 	return existed, err
